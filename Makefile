@@ -16,7 +16,7 @@ OUTPUT_WITH = $(TRIAL_DIR)/with_shared_clusters
 SIM_SCRIPT = run_simulations.sh
 CHECK_SCRIPT = run_check.sh
 CHECK_MACRO = CheckTracksCA.C
-COMPARISON_SCRIPT = compare_efficiency_fake.py
+COMPARISON_SCRIPT = tests/compare_efficiency_fake.py
 
 # Configuration variables for simulation
 NWORKERS ?= 30
@@ -109,7 +109,7 @@ $(SIM_WITHOUT_OUTPUT): $(OUTPUT_WITHOUT) $(SIM_SCRIPT)
 	@touch $@
 
 # Copy output to shared clusters folder
-$(COPY_OUTPUT): $(SIM_WITHOUT_OUTPUT) $(OUTPUT_WITH)
+$(COPY_OUTPUT): $(SIM_WITHOUT_OUTPUT)
 	@echo "Copying simulation output to shared clusters folder..."
 	@if [ ! -d "$(OUTPUT_WITHOUT)/tf1" ]; then \
 		echo "Error: Source tf1 directory $(OUTPUT_WITHOUT)/tf1 does not exist"; \

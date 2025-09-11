@@ -36,6 +36,9 @@
 #include "SimulationDataFormat/MCCompLabel.h"
 #include "SimulationDataFormat/MCTruthContainer.h"
 #include "DataFormatsITS/TrackITS.h"
+#include "CCDB/BasicCCDBManager.h"
+#include "CCDB/CCDBTimeStampUtils.h"
+#include "DataFormatsITSMFT/TopologyDictionary.h"
 
 #endif
 #include "DataFormatsITSMFT/CompCluster.h"
@@ -44,12 +47,14 @@ using namespace std;
 
 struct ParticleInfo {
   int event;
+  int id;
   int pdg;
   float pt;
   float eta;
   float phi;
   int motherTrackId;
   int motherTrackPdg;
+  int process = 0;
   int first;
   float pvx{};
   float pvy{};
@@ -58,8 +63,8 @@ struct ParticleInfo {
   float dcaz;
   bool isShared = 0u;
   int nSharedClusters = 0;
+  int firstSharedLayer = -1;
   unsigned short clusters = 0u;
-  unsigned short clustersFake = 0u;
   unsigned char isReco = 0u;
   unsigned char isFake = 0u;
   bool isPrimary = 0u;
@@ -67,9 +72,28 @@ struct ParticleInfo {
   o2::its::TrackITS track;
 };
 
+struct ParticleRecoInfo {
+  std::array<float, 7> clusterX{};
+  std::array<float, 7> clusterY{};
+  std::array<float, 7> clusterZ{};
+  std::array<float, 7> clusterXloc{};
+  std::array<float, 7> clusterYloc{};
+  std::array<float, 7> clusterZloc{};
+  std::array<int, 7> clusterRow{};
+  std::array<int, 7> clusterCol{};
+  std::array<int, 7> stave{};
+  std::array<int, 7> module{};
+  std::array<int, 7> chipInModule{};
+  unsigned char storedStatus = 2; /// not stored = 2, fake = 1, good = 0
+  bool isShared = 0u;
+  int event;
+  int mcTrackID;
+};
+
 #pragma link C++ class ParticleInfo + ;
 
 void CheckTracksCA(bool doFakeClStud = true,
+                   bool verbose = true,
                    std::string tracfile = "o2trac_its.root",
                    std::string magfile = "o2sim",
                    std::string clusfile = "o2clus_its.root",
@@ -82,9 +106,16 @@ void CheckTracksCA(bool doFakeClStud = true,
   o2::base::Propagator::initFieldFromGRP(magfile);
   float bz = o2::base::Propagator::Instance()->getNominalBz();
 
+  auto& mgr = o2::ccdb::BasicCCDBManager::instance();
+  mgr.setURL("http://alice-ccdb.cern.ch");
+  mgr.setTimestamp(o2::ccdb::getCurrentTimestamp());
+  const o2::itsmft::TopologyDictionary* dict = mgr.get<o2::itsmft::TopologyDictionary>("ITS/Calib/ClusterDictionary");
+
   // Geometry
   o2::base::GeometryManager::loadGeometry();
   auto gman = o2::its::GeometryTGeo::Instance();
+  gman->fillMatrixCache(o2::math_utils::bit2Mask(o2::math_utils::TransformType::T2L, o2::math_utils::TransformType::T2GRot,
+                                                 o2::math_utils::TransformType::L2G)); // request cached transforms
 
   // MC tracks
   TFile* file0 = TFile::Open(kinefile.data());
@@ -103,6 +134,11 @@ void CheckTracksCA(bool doFakeClStud = true,
   TTree* clusTree = (TTree*)gFile->Get("o2sim");
   std::vector<CompClusterExt>* clusArr = nullptr;
   clusTree->SetBranchAddress("ITSClusterComp", &clusArr);
+  std::vector<unsigned char>* patternsPtr = nullptr;
+  auto pattBranch = clusTree->GetBranch("ITSClusterPatt");
+  if (pattBranch) {
+    pattBranch->SetAddress(&patternsPtr);
+  }
 
   // Cluster MC labels
   o2::dataformats::MCTruthContainer<o2::MCCompLabel>* clusLabArr = nullptr;
@@ -126,6 +162,7 @@ void CheckTracksCA(bool doFakeClStud = true,
   int lastEventIDcl = -1, cf = 0;
   int nev = mcTree->GetEntriesFast();
   std::vector<std::vector<ParticleInfo>> info;
+  std::vector<std::vector<ParticleRecoInfo>> infoReco;
   info.resize(nev);
   TH1D* hZvertex = new TH1D("hZvertex", "Z vertex", 100, -20, 20);
   for (int n = 0; n < nev; n++) { // loop over MC events
@@ -135,6 +172,8 @@ void CheckTracksCA(bool doFakeClStud = true,
     for (unsigned int mcI{0}; mcI < mcArr->size(); ++mcI) {
       auto part = mcArr->at(mcI);
       info[n][mcI].event = n;
+      info[n][mcI].id = mcI;
+      info[n][mcI].process = part.getProcess();
       info[n][mcI].pdg = part.GetPdgCode();
       info[n][mcI].pvx = mcEvent->GetX();
       info[n][mcI].pvy = mcEvent->GetY();
@@ -147,18 +186,6 @@ void CheckTracksCA(bool doFakeClStud = true,
       auto mother = o2::mcutils::MCTrackNavigator::getMother(part, *mcArr);
       if (mother) {
         info[n][mcI].motherTrackPdg = mother->GetPdgCode();
-      }
-      if (n==995 && std::abs(info[n][mcI].pdg) == 2212 && std::abs(info[n][mcI].motherTrackPdg) == 321) {
-        std::cout << "here";
-        //std::cout << "MC Particle " << mcI << " Mother PDG: " << info[n][mcI].motherTrackPdg << std::endl;
-        auto dau0 = o2::mcutils::MCTrackNavigator::getDaughter0(*mother, *mcArr);
-        auto dau1 = o2::mcutils::MCTrackNavigator::getDaughter1(*mother, *mcArr);
-        
-        // for (auto dau = dau0; dau <= dau1; ++dau) {
-          // if (dau) {
-              // std::cout << "MC Particle " << mcI << " Daughter PDG: " << dau->GetPdgCode() << std::endl;
-          // }
-        // }
       }
     }
   }
@@ -196,11 +223,15 @@ void CheckTracksCA(bool doFakeClStud = true,
   std::cout << "** Analysing tracks ... " << std::flush;
   int unaccounted_label{0}, unaccounted_event{0}, unaccounted_track{0}, shared_clusters{0}, good{0}, fakes{0}, total{0};
   std::map<int, int> clCounterMap;
-  for (int frame = 0; frame < recTree->GetEntriesFast(); frame++) { // Cluster frames
+  auto pattIt = patternsPtr->cbegin();
+  int nFrames = recTree->GetEntriesFast();
+  infoReco.resize(nFrames);
+  for (int frame = 0; frame < nFrames; frame++) { // Cluster frames
     if (!recTree->GetEvent(frame))
       continue;
     int offset = rofRecVecP->at(frame).getFirstEntry();
     total += trkLabArr->size();
+    infoReco[frame].resize(trkLabArr->size());
     for (unsigned int iTrack{0}; iTrack < trkLabArr->size(); ++iTrack) {
       auto lab = trkLabArr->at(iTrack);
       if (!lab.isSet()) {
@@ -218,6 +249,9 @@ void CheckTracksCA(bool doFakeClStud = true,
         unaccounted_track++;
         continue;
       }
+
+      infoReco[frame][iTrack].event = evID;
+      infoReco[frame][iTrack].mcTrackID = trackID;
       
       int firstClusterEntry = recArr->at(iTrack).getFirstClusterEntry();
       int nCl = recArr->at(iTrack).getNumberOfClusters();
@@ -228,10 +262,42 @@ void CheckTracksCA(bool doFakeClStud = true,
         clCounterMap[(*trkClusIdx)[firstClusterEntry + iCl]]++;
       }
 
+      for (int kCl = 0; kCl < nCl; kCl++) {
+        auto clus = (*clusArr)[offset + (*trkClusIdx)[firstClusterEntry + kCl]];
+        int layer = gman->getLayer(clus.getSensorID());
+        int stave = gman->getStave(clus.getSensorID());
+        int module = gman->getModule(clus.getSensorID());
+        int chipInModule = gman->getChipIdInModule(clus.getSensorID());
+        
+        o2::math_utils::Point3D<float> locC;
+        auto pattID = clus.getPatternID();
+        if (pattID == o2::itsmft::CompCluster::InvalidPatternID || dict->isGroup(pattID)) {
+          o2::itsmft::ClusterPattern patt(pattIt);
+          locC = dict->getClusterCoordinates(clus, patt, false);
+        } else {
+          locC = dict->getClusterCoordinates(clus);
+        }
+        auto chipID = clus.getSensorID();
+        // Transformation to the local --> global
+        auto gloC = gman->getMatrixL2G(chipID) * locC;
+        
+        infoReco[frame][iTrack].clusterX[layer] = gloC.X();
+        infoReco[frame][iTrack].clusterY[layer] = gloC.Y();
+        infoReco[frame][iTrack].clusterZ[layer] = gloC.Z();
+        infoReco[frame][iTrack].clusterXloc[layer] = locC.X();
+        infoReco[frame][iTrack].clusterYloc[layer] = locC.Y();
+        infoReco[frame][iTrack].clusterZloc[layer] = locC.Z();
+        infoReco[frame][iTrack].clusterRow[layer] = clus.getRow();
+        infoReco[frame][iTrack].clusterCol[layer] = clus.getCol();
+        infoReco[frame][iTrack].stave[layer] = stave;
+        infoReco[frame][iTrack].module[layer] = module;
+        infoReco[frame][iTrack].chipInModule[layer] = chipInModule;
+      }
+
       if (recArr->at(iTrack).hasSharedClusters()) {
         hasShared = true;
-        std::cout << "Track " << iTrack << " has shared clusters. EvID: " << evID << std::endl;
-
+        if (verbose) std::cout << "Track " << iTrack << " has shared clusters. EvID: " << evID << std::endl;
+        
         for (unsigned int jTrack{0}; jTrack < trkLabArr->size(); ++jTrack) {
           if (iTrack == jTrack) {
             continue;
@@ -249,7 +315,7 @@ void CheckTracksCA(bool doFakeClStud = true,
           if (jTrackID < 0 || jTrackID >= (int)info[jEvID].size()) {
             continue;
           }
-
+          
           int firstClusterSecTrackEntry = recArr->at(jTrack).getFirstClusterEntry();
           int nClSecTrack = recArr->at(jTrack).getNumberOfClusters();
           
@@ -257,33 +323,65 @@ void CheckTracksCA(bool doFakeClStud = true,
             for (int jCl = 0; jCl < nClSecTrack; jCl++) {
               if ((*trkClusIdx)[firstClusterSecTrackEntry + jCl] == (*trkClusIdx)[firstClusterEntry + iCl]) {
                 nSharedClusters++;
-                std::cout << "Found shared cluster between tracks " << iTrack << " (PDG: " <<  info[evID][trackID].pdg << ") and " << jTrack 
-                << " (PDG: " << info[evID][jTrackID].pdg << "): " << (*trkClusIdx)[firstClusterEntry + iCl] << std::endl;
-                std::cout << "Track " << iTrack << " has mother " << info[evID][trackID].motherTrackId << " with PDG " << info[evID][trackID].motherTrackPdg << ", track " << jTrack << " has mother " << info[evID][jTrackID].motherTrackId << " with PDG " << info[evID][jTrackID].motherTrackPdg << std::endl;
-                std::cout << "Track "  << iTrack << " is " << (fake ? "fake" : "good") << ", track " << jTrack << " is " << (jFake ? "fake" : "good") << std::endl;
+
+                if (verbose) {
+                  std::cout << "Found shared cluster between tracks " << iTrack << " (Track ID: " << trackID << ", PDG: " <<  info[evID][trackID].pdg << ", process: " <<  info[evID][trackID].process << ") and " << jTrack 
+                  << " (Track ID: " << jTrackID << ", PDG: " << info[evID][jTrackID].pdg << ", process: " << info[evID][jTrackID].process << "): " << (*trkClusIdx)[firstClusterEntry + iCl] << std::endl;
+                  std::cout << "Track " << iTrack << " has mother " << info[evID][trackID].motherTrackId << " with PDG " << info[evID][trackID].motherTrackPdg << ", track " << jTrack << " has mother " << info[evID][jTrackID].motherTrackId << " with PDG " << info[evID][jTrackID].motherTrackPdg << std::endl;
+                  std::cout << "Track "  << iTrack << " is " << (fake ? "fake" : "good") << ", track " << jTrack << " is " << (jFake ? "fake" : "good") << std::endl;
+                  std::cout << "Track " << trackID << ": ";
+                
+                  for (int iBit=0; iBit<7; ++iBit) {
+                    std::cout << (info[evID][trackID].clusters & (1 << iBit) ? "1" : "0");
+                  }
+                  std::cout << std::endl;
+                }
+
                 for (int kCl = 0; kCl < nCl; kCl++) {
-                  int layer = gman->getLayer((*clusArr)[offset + (*trkClusIdx)[firstClusterEntry + kCl]].getSensorID());
-                  std::cout << "Track " << iTrack << " has cluster " << (*trkClusIdx)[firstClusterEntry + kCl] << " in layer " << layer << " and is " << (recArr->at(iTrack).isFakeOnLayer(layer) ? "fake" : "good") << std::endl;
+                  auto clus = (*clusArr)[offset + (*trkClusIdx)[firstClusterEntry + kCl]];
+                  int layer = gman->getLayer(clus.getSensorID());
+                  
+                  if (verbose) std::cout << "Track " << trackID << " has cluster " << (*trkClusIdx)[firstClusterEntry + kCl] << " in layer " << layer << " and is " << (recArr->at(iTrack).isFakeOnLayer(layer) ? "fake" : "good") << std::endl;
+                  info[evID][trackID].clusters |= (1 << layer);
                 }
                 for (int lCl = 0; lCl < nClSecTrack; lCl++) {
                   int layer = gman->getLayer((*clusArr)[offset + (*trkClusIdx)[firstClusterSecTrackEntry + lCl]].getSensorID());
-                  std::cout << "Track " << jTrack << " has cluster " << (*trkClusIdx)[firstClusterSecTrackEntry + lCl] << " in layer " << layer << " and is " << (recArr->at(jTrack).isFakeOnLayer(layer) ? "fake" : "good") << std::endl;
+                  if (verbose)  std::cout << "Track " << jTrackID << " has cluster " << (*trkClusIdx)[firstClusterSecTrackEntry + lCl] << " in layer " << layer << " and is " << (recArr->at(jTrack).isFakeOnLayer(layer) ? "fake" : "good") << std::endl;
                 }
+
+                if (verbose) {
+                  std::cout << "Track " << trackID << ": ";
+                  for (int iBit=0; iBit<7; ++iBit) {
+                    std::cout << (info[evID][trackID].clusters & (1 << iBit) ? "1" : "0");
+                  }
+                  std::cout << std::endl;
+                  std::cout << info[evID][trackID].clusters << std::endl;
+                  std::cout << "firstSharedLayer: " << recArr->at(iTrack).getFirstClusterLayer() << std::endl;
+                }
+
               }
             }
           }
+          
+          
         }
-        std::cout << "Number of shared clusters for track " << iTrack << ": " << nSharedClusters << std::endl;
-        std::cout << std::endl;
-        std::cout << "----------------------------------------------------------------------" << std::endl;
-        std::cout << std::endl;
+        if (verbose) {
+          std::cout << std::endl;
+          std::cout << "Number of shared clusters for track " << iTrack << ": " << nSharedClusters << std::endl;
+          std::cout << std::endl;
+          std::cout << "----------------------------------------------------------------------" << std::endl;
+          std::cout << std::endl;
+        }
       }
-
+      
+      infoReco[frame][iTrack].isShared = hasShared;
+      info[evID][trackID].id = trackID;
       info[evID][trackID].isReco += !fake;
       info[evID][trackID].isFake += fake;
       info[evID][trackID].isShared = hasShared;
       info[evID][trackID].nSharedClusters = nSharedClusters;
-      
+      info[evID][trackID].firstSharedLayer = hasShared ? recArr->at(iTrack).getFirstClusterLayer() : -1;
+
       /// We keep the best track we would keep in the data
       if (recArr->at(iTrack).isBetter(info[evID][trackID].track, 1.e9)) {
         info[evID][trackID].track = recArr->at(iTrack);
@@ -412,7 +510,24 @@ void CheckTracksCA(bool doFakeClStud = true,
       tree.Fill();
     }
   }
+  TTree treeReco("ParticleInfoReco", "ParticleInfoReco");
+  ParticleRecoInfo pInfoReco;
+  treeReco.Branch("particle", &pInfoReco);
+  for (auto& event : infoReco) {
+    for (auto& part : event) {
+      int nCl{0};
+      for (unsigned int bit{0}; bit < sizeof(pInfo.clusters) * 8; ++bit) {
+        nCl += bool(info[part.event][part.mcTrackID].clusters & (1 << bit));
+      }
+      if (nCl < 3) {
+        continue;
+      }
+      pInfoReco = part;
+      treeReco.Fill();
+    }
+  }
   tree.Write();
+  treeReco.Write();
   sum->Write("total");
   fak->Write("singleFake");
   num->Write("efficiency");
