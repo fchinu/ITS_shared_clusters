@@ -2,7 +2,8 @@
 import argparse
 import uproot
 import numpy as np
-from data_matcher import DataMatcher
+import sys
+from utils.data_matcher import DataMatcher
 
 MC_COLS_TO_ADD = [
     "pdg", "pt", "eta", "phi", "motherTrackId", "motherTrackPdg",
@@ -53,7 +54,7 @@ def make_label(row):
         return fr"${PDG_LABELS[pdg]} \leftarrow {PDG_LABELS[mother]}$"
     else:
         print(f"Unknown PDG: {row.pdg}, Mother PDG: {row.motherTrackPdg}")
-        return "altro"
+        return "others"
     
 def get_cylindrical(df):
     print(df.columns)
@@ -64,8 +65,8 @@ def get_cylindrical(df):
     R = np.sqrt(X**2 + Y**2)
     PHI = np.arctan2(Y, X)
 
-    df['r'] = list(R)
-    df['phi'] = list(PHI)
+    df['clusterR[7]'] = list(R)
+    df['clusterPhi[7]'] = list(PHI)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert CheckTracksCA output ROOT file to Parquet format.")
