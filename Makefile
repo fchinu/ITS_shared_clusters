@@ -7,6 +7,7 @@ NAME ?= shared_clusters_test
 BASE_DIR = ./simulations
 TRIAL_DIR = $(BASE_DIR)/$(NAME)
 SCRIPT_DIR = $(shell pwd)
+VENV_PATH       = $(HOME)/.venv/ml
 
 # Output directories
 OUTPUT_WITHOUT = $(TRIAL_DIR)/without_shared_clusters
@@ -17,6 +18,10 @@ SIM_SCRIPT = run_simulations.sh
 CHECK_SCRIPT = run_check.sh
 CHECK_MACRO = CheckTracksCA.C
 COMPARISON_SCRIPT = tests/compare_efficiency_fake.py
+PREPROCESS_SH   = run_preprocess.sh
+PREPROCESS_PY  = $(SCRIPT_DIR)/macros/preprocess.py
+ANALYSIS_SH     = run_analysis.sh
+ANALYSIS_PY     = $(SCRIPT_DIR)/macros/draw_shared.py $(SCRIPT_DIR)/macros/study_doubly_reco.py 
 
 # Configuration variables for simulation
 NWORKERS ?= 30
@@ -30,12 +35,14 @@ SIM_WITHOUT_OUTPUT = $(OUTPUT_WITHOUT)/simulation.done
 SIM_WITH_OUTPUT = $(OUTPUT_WITH)/simulation.done
 COPY_OUTPUT = $(OUTPUT_WITH)/copy.done
 CHECK_OUTPUT = $(TRIAL_DIR)/check.done
+PREPROC_OUTPUT = $(TRIAL_DIR)/preprocess.done
+ANALYSIS_OUTPUT    = $(TRIAL_DIR)/analysis.done
 
 # Define the targets
-.PHONY: all clean-output help setup simulate-without copy-output simulate-with validate-environment force-simulate-with
+.PHONY: all clean-output help setup simulate-without copy-output simulate-with validate-environment force-simulate-with preprocess analysis
 
 # Default target
-all: validate-environment setup simulate-without copy-output simulate-with check
+all: validate-environment setup simulate-without copy-output simulate-with check preprocess analysis
 
 # Help target
 help:
@@ -179,11 +186,36 @@ $(CHECK_OUTPUT): $(SIM_WITH_OUTPUT) $(SIM_WITHOUT_OUTPUT) $(CHECK_SCRIPT) $(COMP
 	fi
 	@touch $@
 
+# Preprocessing (ROOT → Parquet)
+$(PREPROC_OUTPUT): $(CHECK_OUTPUT) $(PREPROCESS_PY) $(PREPROCESS_SH)
+	@echo "Pre-processing ROOT → Parquet (without shared clusters)..."
+	@export OUTPUT_DIR="$(TRIAL_DIR)" && bash $(abspath $(PREPROCESS_SH))
+	@if [ $$? -eq 0 ]; then \
+		echo "✓ Preprocess completed successfully"; \
+	else \
+		echo "✗ Preprocess failed"; \
+		exit 1; \
+	fi
+	@touch $@
+
+$(ANALYSIS_OUTPUT): $(PREPROC_OUTPUT) $(ANALYSIS_PY) $(ANALYSIS_SH)
+	@echo "Running analysis script..."
+	@export OUTPUT_DIR="$(TRIAL_DIR)" && bash $(abspath $(ANALYSIS_SH))
+	@if [ $$? -eq 0 ]; then \
+		echo "✓ Analysis completed successfully"; \
+	else \
+		echo "✗ Analysis failed"; \
+		exit 1; \
+	fi
+	@touch $@
+
 # Convenient aliases
 simulate-without: $(SIM_WITHOUT_OUTPUT)
 copy-output: $(COPY_OUTPUT)
 simulate-with: $(SIM_WITH_OUTPUT)
 check: $(CHECK_OUTPUT)
+preprocess: $(PREPROC_OUTPUT)
+analysis: $(ANALYSIS_OUTPUT)
 
 # Clean output files but preserve directory structure
 clean-output:

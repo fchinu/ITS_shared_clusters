@@ -7,38 +7,16 @@ import numpy as np
 from collections import Counter
 from matplotlib.backends.backend_pdf import PdfPages
 
-PDG_LABELS = {
-    11: "e",
-    13: r"\mu",
-    22: r"\gamma",
-    111: r"\pi^{0}",
-    113: r"\rho^{0}",
-    211: r"\pi^{\pm}",
-    213: r"\rho^{\pm}",
-    221: r"\eta",
-    223: r"\omega",
-    310: r"K_{s}^{0}",
-    313: r"K*^{0}",
-    321: r"K",
-    331: r"\eta'",
-    411: r"D^{\pm}",
-    1114: r"\Delta^{\pm}",
-    2212: "p",
-    2224: r"\Delta^{++}",
-    3112: r"\Sigma^{\pm}",
-    1000822080: "Pb"
-}
-
 def create_single_histogram(labels, title, color):
     """Create a single histogram with ordered bars"""
     label_counts = Counter(labels)
     
-    altro_count = label_counts.pop("altro", 0)
+    others_count = label_counts.pop("others", 0)
     
     sorted_items = sorted(label_counts.items(), key=lambda x: x[1], reverse=True)
     
-    if altro_count > 0:
-        sorted_items.append(("altro", altro_count))
+    if others_count > 0:
+        sorted_items.append(("others", others_count))
     
     plot_labels = [item[0] for item in sorted_items]
     counts = [item[1] for item in sorted_items]
@@ -73,10 +51,10 @@ def create_2d_histogram_classified(fake_data, good_data, doubly_reco_data):
     all_labels = list(fake_data['label']) + list(good_data['label']) + list(doubly_reco_data['label'])
     unique_labels = sorted(set(all_labels))
     
-    # Move "altro" to end if present
-    if "altro" in unique_labels:
-        unique_labels.remove("altro")
-        unique_labels.append("altro")
+    # Move "others" to end if present
+    if "others" in unique_labels:
+        unique_labels.remove("others")
+        unique_labels.append("others")
     
     label_to_index = {label: i for i, label in enumerate(unique_labels)}
     
@@ -218,10 +196,13 @@ def create_2d_histogram_classified(fake_data, good_data, doubly_reco_data):
     
     plt.tight_layout()
 
-def draw_shared_clusters(input_file, output_file):
+def draw_shared_clusters(input_file, output_file, all_tracks=False):
     df = pd.read_parquet(input_file)
     
-    df_shared = df.copy() #.query("isShared == 1")
+    if all_tracks:
+        df_shared = df.copy()
+    else:
+        df_shared = df.query("isShared == 1")
         
     fake_data, good_data, doubly_reco_data = classify_and_create_data(df_shared)
 
@@ -241,12 +222,12 @@ def draw_shared_clusters(input_file, output_file):
         all_label_counts = Counter(all_labels)
         all_first_shared_layer_counts = Counter(all_first_shared_layers)
 
-        altro_count = all_label_counts.pop("altro", 0)
+        others_count = all_label_counts.pop("others", 0)
         
         all_sorted_items = sorted(all_label_counts.items(), key=lambda x: x[1], reverse=True)
         
-        if altro_count > 0:
-            all_sorted_items.append(("altro", altro_count))
+        if others_count > 0:
+            all_sorted_items.append(("others", others_count))
         
         all_plot_labels = [item[0] for item in all_sorted_items]
         
@@ -264,12 +245,12 @@ def draw_shared_clusters(input_file, output_file):
         width = 0.8
         
         bars1 = plt.bar(x_pos, fake_counts, width=width, alpha=0.7, 
-                       color='red', edgecolor='black', label='Fake')
+                       color='red', edgecolor='black', label=f'Fake (Total: {sum(fake_counts)})')
         bars3 = plt.bar(x_pos, doubly_reco_counts, width=width, alpha=0.7,
-                          color='green', edgecolor='black', label='Doubly Reco', bottom=fake_counts)
+                          color='green', edgecolor='black', label=f'Doubly Reco (Total: {sum(doubly_reco_counts)})', bottom=fake_counts)
         bars2 = plt.bar(x_pos, good_counts, width=width, alpha=0.7, 
-                       color='blue', edgecolor='black', label='Good', bottom=fake_counts + np.array(doubly_reco_counts))
-        
+                       color='blue', edgecolor='black', label=f'Good (Total: {sum(good_counts)})', bottom=fake_counts + np.array(doubly_reco_counts))
+
         plt.xlabel('Particle Origin')
         plt.ylabel('Counts')
         plt.title('Shared Clusters: "Fake" vs "Good" vs Doubly Reco Tracks')
@@ -325,13 +306,14 @@ def draw_shared_clusters(input_file, output_file):
         good_counts = df_shared.query("isGoodMother and not same_mc_track_id")['firstSharedLayer'].value_counts().reindex(x_pos, fill_value=0)
 
         # Plot stacked bars
-        plt.bar(x_pos, fake_counts, width=width, alpha=0.7, color='red', edgecolor='black', label='Fake')
-        plt.bar(x_pos, doubly_reco_counts, width=width, alpha=0.7, color='green', edgecolor='black', label='Doubly Reco', bottom=fake_counts)
-        plt.bar(x_pos, good_counts, width=width, alpha=0.7, color='blue', edgecolor='black', label='Good', bottom=fake_counts+np.array(doubly_reco_counts))
+        plt.bar(x_pos, fake_counts, width=width, alpha=0.7, color='red', edgecolor='black', label=f'Fake (Total: {sum(fake_counts)})')
+        plt.bar(x_pos, doubly_reco_counts, width=width, alpha=0.7, color='green', edgecolor='black', label=f'Doubly Reco (Total: {sum(doubly_reco_counts)})', bottom=fake_counts)
+        plt.bar(x_pos, good_counts, width=width, alpha=0.7, color='blue', edgecolor='black', label=f'Good (Total: {sum(good_counts)})', bottom=fake_counts+np.array(doubly_reco_counts))
 
         plt.xlabel('Shared Cluster Layer')
         plt.ylabel('Counts')
         plt.title('Shared Clusters: "Fake" vs "Good" vs Doubly Reco Tracks')
+        plt.legend()
 
         all_plot_labels = [str(i) for i in x_pos]  # example layer labels
         plt.xticks(x_pos, all_plot_labels, rotation=45, ha='right')
@@ -353,8 +335,9 @@ def draw_shared_clusters(input_file, output_file):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Draw shared clusters")
-    parser.add_argument("--input", type=str, default="CheckTracksCA.parquet", help="Input CheckTracksCA parquet file")
-    parser.add_argument("--output", type=str, default="shared_clusters.pdf", help="Output file")
+    parser.add_argument("input", type=str, default="CheckTracksCA.parquet", help="Input CheckTracksCA parquet file")
+    parser.add_argument("output", type=str, default="shared_clusters.pdf", help="Output file")
+    parser.add_argument("--all", action='store_true', help="Output all tracks, not only shared")
     args = parser.parse_args()
 
-    draw_shared_clusters(args.input, args.output)
+    draw_shared_clusters(args.input, args.output, args.all)

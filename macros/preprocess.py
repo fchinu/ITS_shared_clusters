@@ -3,6 +3,7 @@ import argparse
 import uproot
 import numpy as np
 import sys
+sys.path.append(".")
 from utils.data_matcher import DataMatcher
 
 MC_COLS_TO_ADD = [
@@ -92,5 +93,12 @@ if __name__ == "__main__":
         df.groupby(["event", "mcTrackID"])["mcTrackID"]
         .transform("count") > 1
     )
+
+    n_layers = 7
+    df["layers_hits"] = df["clusters"].apply(
+        lambda x: [(x >> i) & 1 == 1 for i in range(n_layers)]
+    )
+
+    df["n_hits"] = df["layers_hits"].apply(lambda x: sum(x))
 
     df.to_parquet(args.output)

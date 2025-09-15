@@ -60,21 +60,9 @@ run_macro_in_dir() {
 # ======= Run both variants =======
 run_macro_in_dir "with_shared_clusters"
 run_macro_in_dir "without_shared_clusters"
-python3 compare_efficiency_fake.py --file_with "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.root" --file_without "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.root" --output "${OUTPUT_DIR}/comparison.pdf"
+python3 tests/compare_efficiency_fake.py --file_with "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.root" --file_without "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.root" --output "${OUTPUT_DIR}/comparison.pdf"
+
 
 # ======= Done =======
 echo "🎉 All plots generated and copied to ${OUTPUT_DIR}"
 cd "${ORIGINAL_DIR}"
-
-# without_shared_cluster
-# ** Some statistics:
-#         - Total number of tracks: 24163
-#         - Total number of tracks not corresponding to particles: 1902 (7.87154%)
-#         - Total number of fakes: 863 (3.57158%)
-#         - Total number of good: 21398 (88.5569%)
-# with_shared_clusters
-# ** Some statistics:
-#         - Total number of tracks: 24174
-#         - Total number of tracks not corresponding to particles: 1913 (7.91346%)
-#         - Total number of fakes: 863 (3.56995%)
-#         - Total number of good: 21398 (88.5166%)
