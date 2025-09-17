@@ -116,7 +116,9 @@ if __name__ == "__main__":
     df["isGoodMother"] = False
 
     # Only apply the logic to shared clusters
-    shared_mask = df["isShared"] is True
+    shared_mask = (
+        df["isShared"] == True  # pylint: disable=singleton-comparison  # noqa: E712
+    )
     df.loc[shared_mask, "isGoodMother"] = (
         df[shared_mask]
         .groupby(["event", "motherTrackId", "tf"])["motherTrackId"]
