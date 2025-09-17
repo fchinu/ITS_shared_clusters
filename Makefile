@@ -29,6 +29,7 @@ NSIGEVENTS ?= 20000
 NTIMEFRAMES ?= 1
 SPLITID ?= 42
 SIMENGINE ?= TGeant4
+LOW_FIELD ?= false
 
 # Output files (tracking completion)
 SIM_WITHOUT_OUTPUT = $(OUTPUT_WITHOUT)/simulation.done
@@ -165,40 +166,6 @@ $(SIM_WITH_OUTPUT): $(COPY_OUTPUT)
 		exit 1; \
 	fi
 	@touch $@
-# 	@if [ ! -f "$(OUTPUT_WITH)/tf1/itsreco_1.log_done" ]; then \
-# 		echo "Error: $(OUTPUT_WITH)/tf1/itsreco_1.log_done not found"; \
-# 		echo "Make sure the simulation without shared clusters completed successfully"; \
-# 		exit 1; \
-# 	fi
-
-
-
-# 	@echo "Backing up log file..."; \
-# 	cp "$(OUTPUT_WITH)/tf1/itsreco_1.log" "$(OUTPUT_WITH)/tf1/itsreco_1.log.bak"
-
-# 	@echo "Extracting command from itsreco_1.log_done..."
-# 	@FULL_LINE=$$(grep 'Command ' $(OUTPUT_WITH)/tf1/itsreco_1.log_done | head -1); \
-# 	echo "Full line: $$FULL_LINE"; \
-# 	COMMAND_PART=$$(echo "$$FULL_LINE" | sed 's/^Command "//;s/" successfully finished.*//'); \
-# 	echo "Extracted command: $$COMMAND_PART"; \
-# 	if [ -z "$$COMMAND_PART" ]; then \
-# 		echo "Error: Could not extract command from log file"; \
-# 		mv "$(OUTPUT_WITH)/tf1/itsreco_1.log.bak" "$(OUTPUT_WITH)/tf1/itsreco_1.log"; \
-# 		exit 1; \
-# 	fi; \
-# 	MODIFIED_COMMAND=$$(echo "$$COMMAND_PART" | sed -E 's/(--configKeyValues ")([^"]*)/\1\2;ITSCATrackerParam.allowSharingFirstCluster=true/'); \
-# 	echo "Modified command: $$MODIFIED_COMMAND"; \
-# 	cd $(OUTPUT_WITH)/tf1 && \
-# 	if eval "$$MODIFIED_COMMAND" > shared_clusters_log.txt 2>&1; then \
-# 		rm -f itsreco_1.log.bak itsreco_1.log; \
-# 		mv shared_clusters_log.txt itsreco_1.log; \
-# 	else \
-# 		echo "Simulation failed — restoring original log file."; \
-# 		mv shared_clusters_log.txt itsreco_1.log.err; \
-# 		mv itsreco_1.log.bak itsreco_1.log; \
-# 		exit 1; \
-# 	fi
-# 	@touch $@
 
 # Run check script
 $(CHECK_OUTPUT): $(SIM_WITH_OUTPUT) $(SIM_WITHOUT_OUTPUT) $(CHECK_SCRIPT) $(COMPARISON_SCRIPT) $(CHECK_MACRO)
