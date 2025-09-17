@@ -3,6 +3,8 @@ set -euo pipefail
 
 # ======= Configuration =======
 OUTPUT_DIR=${OUTPUT_DIR:-"output"}
+OUTPUTS_DIR="${OUTPUT_DIR}/outputs"
+PARTIAL_OUTPUTS_DIR="${OUTPUTS_DIR}/partial"
 VENV_PATH="${HOME}/.venv/ml"
 PREPROCESS_SCRIPT="${HOME}/ITS_sharedclusters/macros/preprocess.py"
 
@@ -15,6 +17,8 @@ ORIGINAL_DIR="$(pwd)"
 
 echo "=== Pre-processing ROOT → Parquet ==="
 echo "OUTPUT_DIR: ${OUTPUT_DIR}"
+echo "OUTPUTS_DIR: ${OUTPUTS_DIR}"
+echo "PARTIAL_OUTPUTS_DIR: ${PARTIAL_OUTPUTS_DIR}"
 echo "VENV_PATH : ${VENV_PATH}"
 echo "Script dir: ${SCRIPT_DIR}"
 echo "======================================="
@@ -36,8 +40,8 @@ preprocess() {
 
     echo "➡️  Pre-processing: ${input_file} → ${output_file}"
 
-    if [ ! -f "${input_file}" ]; then
-        echo "❌ Error: Input file ${input_file} does not exist"
+    if [ ! -d "${input_file}" ]; then
+        echo "❌ Error: Input directory ${input_file} does not exist"
         exit 1
     fi
 
@@ -66,14 +70,16 @@ preprocess() {
 
 # ======= Run preprocessing =======
 mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${OUTPUTS_DIR}/without_shared_clusters"
+mkdir -p "${OUTPUTS_DIR}/with_shared_clusters"
 
 preprocess "${VENV_PATH}" "${PREPROCESS_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.root" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.parquet"
+    "${PARTIAL_OUTPUTS_DIR}/without_shared_clusters" \
+    "${OUTPUTS_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters.parquet"
 
 preprocess "${VENV_PATH}" "${PREPROCESS_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.root" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.parquet"
+    "${PARTIAL_OUTPUTS_DIR}/with_shared_clusters" \
+    "${OUTPUTS_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet"
 
 # ======= Done =======
 echo "🎉 Pre-processing finished"

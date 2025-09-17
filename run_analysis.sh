@@ -116,27 +116,27 @@ study_doubly_reco() {
 
 # ======= Run scripts =======
 draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters_all.pdf" \
+    "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters.parquet" \
+    "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters_all.pdf" \
     true
 
 draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.pdf" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.pdf" \
     false
 
 draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters_all.pdf" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters_all.pdf" \
     true
 
 study_doubly_reco "${VENV_PATH}" "${STUDY_DOUBLY_RECO_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/CheckTracksCAwith_shared_clusters_doubly_reco.pdf"
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters_doubly_reco.pdf"
 
 study_doubly_reco "${VENV_PATH}" "${STUDY_DOUBLY_RECO_SCRIPT}" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/CheckTracksCAwithout_shared_clusters_doubly_reco.pdf"
+    "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters.parquet" \
+    "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters_doubly_reco.pdf"
 
 # ======= Done =======
 echo "🎉 Pre-processing finished"
