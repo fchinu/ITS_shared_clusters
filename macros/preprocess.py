@@ -1,7 +1,9 @@
 """Convert CheckTracksCA output ROOT file to Parquet format for easier analysis."""
 import argparse
+import glob
 import uproot
 import numpy as np
+import pandas as pd
 import sys
 sys.path.append(".")
 from utils.data_matcher import DataMatcher
@@ -71,11 +73,19 @@ def get_cylindrical(df):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert CheckTracksCA output ROOT file to Parquet format.")
-    parser.add_argument("input", type=str, help="Input ROOT file from CheckTracksCA")
+    parser.add_argument("input", type=str, help="Input folder with CheckTracksCA output ROOT files")
     parser.add_argument("output", type=str, help="Output Parquet file")
     args = parser.parse_args()
 
-    df = get_df_from_output(args.input)
+    # Look for all ROOT files in the input folder
+    files = glob.glob(f"{args.input}/*.root")
+    tfs = [int(f.split("_")[-1].split(".root")[0].split("tf")[-1])for f in files]
+
+    dfs = []
+    for file, tf in zip(files, tfs):
+        dfs.append(get_df_from_output(file))
+        dfs[-1]["tf"] = tf
+    df = pd.concat(dfs, ignore_index=True)
     get_cylindrical(df)
 
     df["label"] = df[["pdg", "motherTrackPdg"]].apply(make_label, axis=1)
@@ -85,12 +95,12 @@ if __name__ == "__main__":
     # Only apply the logic to shared clusters
     shared_mask = df["isShared"] == True
     df.loc[shared_mask, "isGoodMother"] = (
-        df[shared_mask].groupby(["event", "motherTrackId"])["motherTrackId"]
+        df[shared_mask].groupby(["event", "motherTrackId", "tf"])["motherTrackId"]
         .transform("count") > 1
     )
 
     df.loc[:, "same_mc_track_id"] = (
-        df.groupby(["event", "mcTrackID"])["mcTrackID"]
+        df.groupby(["event", "mcTrackID", "tf"])["mcTrackID"]
         .transform("count") > 1
     )
 
