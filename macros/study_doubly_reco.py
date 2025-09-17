@@ -53,11 +53,11 @@ def draw_dr_dphi_dz(df_doubly, df_not_doubly):
     dphi = np.concatenate(dphi_list)
     dz = np.concatenate(dz_list)
 
-    axs[0, 0].hist(dr, bins=100, alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
-    axs[0, 1].hist(dphi, bins=100, alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
-    axs[0, 2].hist(dz, bins=100, alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
-    axs[1, 0].hist(df_doubly['n_hits'], bins=100, alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
-    axs[1, 1].hist(df_doubly['pt'], bins=100, alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
+    axs[0, 0].hist(dr, bins=100, range=(0, 0.6), alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
+    axs[0, 1].hist(dphi, bins=100, alpha=0.5, range=(0,7), label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
+    axs[0, 2].hist(dz, bins=100, alpha=0.5, range=(0, 150), label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
+    axs[1, 0].hist(df_doubly['n_hits'], bins=100, range=(3,7), alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
+    axs[1, 1].hist(df_doubly['pt'], bins=100, range=(0, 50), alpha=0.5, label='Not Doubly Reco Tracks', color='orange', density=True, log=True)
 
     shared_tracks = df_doubly.groupby(['mcTrackID', 'event'])
     dr_list, dphi_list, dz_list = [], [], []
@@ -80,11 +80,11 @@ def draw_dr_dphi_dz(df_doubly, df_not_doubly):
     dphi = np.concatenate(dphi_list)
     dz = np.concatenate(dz_list)
 
-    axs[0, 0].hist(dr, bins=100, alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
-    axs[0, 1].hist(dphi, bins=100, alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
-    axs[0, 2].hist(dz, bins=100, alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
-    axs[1, 0].hist(df_not_doubly['n_hits'], bins=100, alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
-    axs[1, 1].hist(df_not_doubly['pt'], bins=100, alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
+    axs[0, 0].hist(dr, bins=100, range=(0, 0.6), alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
+    axs[0, 1].hist(dphi, bins=100, alpha=0.5, range=(0,7), label='Doubly Reco Tracks', color='blue', density=True, log=True)
+    axs[0, 2].hist(dz, bins=100, alpha=0.5, range=(0, 150), label='Doubly Reco Tracks', color='blue', density=True, log=True)
+    axs[1, 0].hist(df_not_doubly['n_hits'], bins=100, range=(3,7), alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
+    axs[1, 1].hist(df_not_doubly['pt'], bins=100, range=(0, 50), alpha=0.5, label='Doubly Reco Tracks', color='blue', density=True, log=True)
 
 
     axs[0, 0].set_xlabel(r'$\Delta$ r (cm)')
