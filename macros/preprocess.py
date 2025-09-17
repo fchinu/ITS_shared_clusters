@@ -1,16 +1,30 @@
 """Convert CheckTracksCA output ROOT file to Parquet format for easier analysis."""
+
 import argparse
 import glob
+import sys
 import uproot
 import numpy as np
 import pandas as pd
-import sys
+
 sys.path.append(".")
-from utils.data_matcher import DataMatcher
+from utils.data_matcher import (  # pylint: disable=wrong-import-position, import-error  # noqa: E402
+    DataMatcher,
+)
 
 MC_COLS_TO_ADD = [
-    "pdg", "pt", "eta", "phi", "motherTrackId", "motherTrackPdg",
-    "process", "firstSharedLayer", "clusters", "isReco", "isFake", "isPrimary"
+    "pdg",
+    "pt",
+    "eta",
+    "phi",
+    "motherTrackId",
+    "motherTrackPdg",
+    "process",
+    "firstSharedLayer",
+    "clusters",
+    "isReco",
+    "isFake",
+    "isPrimary",
 ]
 
 PDG_LABELS = {
@@ -32,14 +46,16 @@ PDG_LABELS = {
     2212: "p",
     2224: r"\Delta^{++}",
     3112: r"\Sigma^{\pm}",
-    1000822080: "Pb"
+    1000822080: "Pb",
 }
 
 
 def get_df_from_output(input_root):
-
+    """Read the CheckTracksCA output ROOT file and return a pandas DataFrame with relevant info."""
     with uproot.open(input_root) as f:
-        df = f["ParticleInfoReco"].arrays(library="pd")
+        df = f["ParticleInfoReco"].arrays(  # pylint: disable=redefined-outer-name
+            library="pd"
+        )
         df_mc = f["ParticleInfo"].arrays(library="pd")
     data_matcher = DataMatcher(df, df_mc)
 
@@ -52,34 +68,41 @@ def get_df_from_output(input_root):
 
 
 def make_label(row):
+    """Create a label for the particle based on its PDG and mother's PDG."""
     pdg, mother = abs(row.pdg), abs(row.motherTrackPdg)
     if pdg in PDG_LABELS and mother in PDG_LABELS:
-        return fr"${PDG_LABELS[pdg]} \leftarrow {PDG_LABELS[mother]}$"
-    else:
-        print(f"Unknown PDG: {row.pdg}, Mother PDG: {row.motherTrackPdg}")
-        return "others"
-    
-def get_cylindrical(df):
+        return rf"${PDG_LABELS[pdg]} \leftarrow {PDG_LABELS[mother]}$"
+
+    print(f"Unknown PDG: {row.pdg}, Mother PDG: {row.motherTrackPdg}")
+    return "others"
+
+
+def get_cylindrical(df):  # pylint: disable=redefined-outer-name
+    """Add cylindrical coordinates to the dataframe."""
     print(df.columns)
-    X = np.stack(df['clusterX[7]'].to_numpy())
-    Y = np.stack(df['clusterY[7]'].to_numpy())
-    Z = np.stack(df['clusterZ[7]'].to_numpy())
+    x = np.stack(df["clusterX[7]"].to_numpy())
+    y = np.stack(df["clusterY[7]"].to_numpy())
 
-    R = np.sqrt(X**2 + Y**2)
-    PHI = np.arctan2(Y, X)
+    r = np.sqrt(x**2 + y**2)
+    phi = np.arctan2(y, x)
 
-    df['clusterR[7]'] = list(R)
-    df['clusterPhi[7]'] = list(PHI)
+    df["clusterR[7]"] = list(r)
+    df["clusterPhi[7]"] = list(phi)
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert CheckTracksCA output ROOT file to Parquet format.")
-    parser.add_argument("input", type=str, help="Input folder with CheckTracksCA output ROOT files")
+    parser = argparse.ArgumentParser(
+        description="Convert CheckTracksCA output ROOT file to Parquet format."
+    )
+    parser.add_argument(
+        "input", type=str, help="Input folder with CheckTracksCA output ROOT files"
+    )
     parser.add_argument("output", type=str, help="Output Parquet file")
     args = parser.parse_args()
 
     # Look for all ROOT files in the input folder
     files = glob.glob(f"{args.input}/*.root")
-    tfs = [int(f.split("_")[-1].split(".root")[0].split("tf")[-1])for f in files]
+    tfs = [int(f.split("_")[-1].split(".root")[0].split("tf")[-1]) for f in files]
 
     dfs = []
     for file, tf in zip(files, tfs):
@@ -93,22 +116,23 @@ if __name__ == "__main__":
     df["isGoodMother"] = False
 
     # Only apply the logic to shared clusters
-    shared_mask = df["isShared"] == True
+    shared_mask = df["isShared"] is True
     df.loc[shared_mask, "isGoodMother"] = (
-        df[shared_mask].groupby(["event", "motherTrackId", "tf"])["motherTrackId"]
-        .transform("count") > 1
+        df[shared_mask]
+        .groupby(["event", "motherTrackId", "tf"])["motherTrackId"]
+        .transform("count")
+        > 1
     )
 
     df.loc[:, "same_mc_track_id"] = (
-        df.groupby(["event", "mcTrackID", "tf"])["mcTrackID"]
-        .transform("count") > 1
+        df.groupby(["event", "mcTrackID", "tf"])["mcTrackID"].transform("count") > 1
     )
 
-    n_layers = 7
+    N_LAYERS = 7
     df["layers_hits"] = df["clusters"].apply(
-        lambda x: [(x >> i) & 1 == 1 for i in range(n_layers)]
+        lambda x: [(x >> i) & 1 == 1 for i in range(N_LAYERS)]
     )
 
-    df["n_hits"] = df["layers_hits"].apply(lambda x: sum(x))
+    df["n_hits"] = df["layers_hits"].apply(sum)
 
     df.to_parquet(args.output)
