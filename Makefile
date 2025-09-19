@@ -32,6 +32,7 @@ SIMENGINE ?= TGeant4
 LOW_FIELD ?= false
 
 # Output files (tracking completion)
+SOURCE_FILE = $(TRIAL_DIR)/source.sh
 SIM_WITHOUT_OUTPUT = $(OUTPUT_WITHOUT)/simulation.done
 SIM_WITH_OUTPUT = $(OUTPUT_WITH)/simulation.done
 COPY_OUTPUT = $(OUTPUT_WITH)/copy.done
@@ -74,7 +75,7 @@ help:
 	@echo "  - Shared clusters simulation extracts command from tf1/itsreco_1.log_done"
 
 # Setup directories
-setup: $(OUTPUT_WITHOUT) $(OUTPUT_WITH)
+setup: $(OUTPUT_WITHOUT) $(OUTPUT_WITH) $(SOURCE_FILE)
 
 # Create directories
 $(OUTPUT_WITHOUT):
@@ -82,6 +83,20 @@ $(OUTPUT_WITHOUT):
 
 $(OUTPUT_WITH):
 	@mkdir -p $@
+
+# Create source file with environment variables
+$(SOURCE_FILE):
+	@echo "Creating source file with environment variables..."
+	@echo "#!/bin/bash" > $@
+	@echo "export NAME=$(NAME)" >> $@
+	@echo "export NWORKERS=$(NWORKERS)" >> $@
+	@echo "export NSIGEVENTS=$(NSIGEVENTS)" >> $@
+	@echo "export NTIMEFRAMES=$(NTIMEFRAMES)" >> $@
+	@echo "export SPLITID=$(SPLITID)" >> $@
+	@echo "export SIMENGINE=$(SIMENGINE)" >> $@
+	@echo "export LOW_FIELD=$(LOW_FIELD)" >> $@
+
+source: $(SOURCE_FILE)
 
 # Run simulation without shared clusters
 $(SIM_WITHOUT_OUTPUT): $(OUTPUT_WITHOUT) $(SIM_SCRIPT)
