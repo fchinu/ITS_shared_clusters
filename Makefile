@@ -20,6 +20,7 @@ CHECK_MACRO = CheckTracksCA.C
 COMPARISON_SCRIPT = tests/compare_efficiency_fake.py
 PREPROCESS_SH   = run_preprocess.sh
 PREPROCESS_PY  = $(SCRIPT_DIR)/macros/preprocess.py
+MATCH_ITS_AO2D = $(SCRIPT_DIR)/macros/matchItsAO2DTracks.cxx
 ANALYSIS_SH     = run_analysis.sh
 ANALYSIS_PY     = $(SCRIPT_DIR)/macros/draw_shared.py $(SCRIPT_DIR)/macros/study_doubly_reco.py 
 
@@ -200,7 +201,7 @@ $(CHECK_OUTPUT): $(SIM_WITH_OUTPUT) $(SIM_WITHOUT_OUTPUT) $(CHECK_SCRIPT) $(COMP
 	@touch $@
 
 # Preprocessing (ROOT → Parquet)
-$(PREPROC_OUTPUT): $(CHECK_OUTPUT) $(PREPROCESS_PY) $(PREPROCESS_SH)
+$(PREPROC_OUTPUT): $(CHECK_OUTPUT) $(PREPROCESS_PY) $(PREPROCESS_SH) $(MATCH_ITS_AO2D)
 	@echo "Pre-processing ROOT → Parquet (without shared clusters)..."
 	@export OUTPUT_DIR="$(TRIAL_DIR)" && bash $(abspath $(PREPROCESS_SH))
 	@if [ $$? -eq 0 ]; then \

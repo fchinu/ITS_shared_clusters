@@ -2,6 +2,7 @@
 
 import argparse
 import glob
+import os
 import sys
 import uproot
 import numpy as np
@@ -66,6 +67,13 @@ def get_df_from_output(input_root):
 
     return df
 
+def get_df_matching(input_root):
+    """Get the DataFrame after matching with AO2D."""
+    with uproot.open(input_root) as f:
+        df_matching = f["MatchingIndex"].arrays(  # pylint: disable=redefined-outer-name
+            library="pd"
+        )
+    return df_matching
 
 def make_label(row):
     """Create a label for the particle based on its PDG and mother's PDG."""
@@ -73,13 +81,12 @@ def make_label(row):
     if pdg in PDG_LABELS and mother in PDG_LABELS:
         return rf"${PDG_LABELS[pdg]} \leftarrow {PDG_LABELS[mother]}$"
 
-    print(f"Unknown PDG: {row.pdg}, Mother PDG: {row.motherTrackPdg}")
+    #print(f"Unknown PDG: {row.pdg}, Mother PDG: {row.motherTrackPdg}")
     return "others"
 
 
 def get_cylindrical(df):  # pylint: disable=redefined-outer-name
     """Add cylindrical coordinates to the dataframe."""
-    print(df.columns)
     x = np.stack(df["clusterX[7]"].to_numpy())
     y = np.stack(df["clusterY[7]"].to_numpy())
 
@@ -90,24 +97,30 @@ def get_cylindrical(df):  # pylint: disable=redefined-outer-name
     df["clusterPhi[7]"] = list(phi)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Convert CheckTracksCA output ROOT file to Parquet format."
-    )
-    parser.add_argument(
-        "input", type=str, help="Input folder with CheckTracksCA output ROOT files"
-    )
-    parser.add_argument("output", type=str, help="Output Parquet file")
-    args = parser.parse_args()
-
+def main(input_file, output_file):
+    """Main function to convert ROOT to Parquet."""
     # Look for all ROOT files in the input folder
-    files = glob.glob(f"{args.input}/*.root")
+    files = glob.glob(f"{input_file}/*.root")
     tfs = [int(f.split("_")[-1].split(".root")[0].split("tf")[-1]) for f in files]
 
     dfs = []
     for file, tf in zip(files, tfs):
         dfs.append(get_df_from_output(file))
+
+        outfile_root = output_file.replace(".parquet", f"tf{tf}.root")
+        cols_matching = ["event", "pdg", "pt", "eta", "phi"]
+        with uproot.recreate(outfile_root) as f:
+            f["RecoTracks"] = dfs[-1][cols_matching]
+
+        base_dir = file.split("/outputs/partial/")[0]
+        variant = file.split("/outputs/partial/")[-1].split("/")[0]
+        ao2d_file = os.path.join(base_dir, variant, f"tf{tf}", "AO2D.root")
+
+        os.system(f"root -l -b -q 'macros/matchItsAO2DTracks.cxx+(\"{outfile_root}\", \"{ao2d_file}\", {tf})'")
+        dfs[-1] = pd.concat([dfs[-1], get_df_matching(outfile_root)], axis=1)
+        os.remove(outfile_root)
         dfs[-1]["tf"] = tf
+
     df = pd.concat(dfs, ignore_index=True)
     get_cylindrical(df)
 
@@ -137,4 +150,16 @@ if __name__ == "__main__":
 
     df["n_hits"] = df["layers_hits"].apply(sum)
 
-    df.to_parquet(args.output)
+    df.to_parquet(output_file)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Convert CheckTracksCA output ROOT file to Parquet format."
+    )
+    parser.add_argument(
+        "input", type=str, help="Input folder with CheckTracksCA output ROOT files"
+    )
+    parser.add_argument("output", type=str, help="Output Parquet file")
+    args = parser.parse_args()
+
+    main(args.input, args.output)
