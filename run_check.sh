@@ -50,7 +50,7 @@ run_macro_in_dir() {
     cp "${SCRIPT_DIR}/${MACRO_NAME}" "${dest_dir}/"
 
     pushd "${dest_dir}" > /dev/null
-    root -l -b -q "${MACRO_NAME}"
+    root -l -b -q "${MACRO_NAME}(true, true, false, true, true, \"o2trac_its.root\", \"o2sim\", \"o2clus_its.root\", \"sgn_Kine.root\")"
     popd > /dev/null
 
     if [ ! -f "${dest_dir}/${OUTPUT_NAME_PDF}" ]; then
@@ -111,6 +111,6 @@ process_variant() {
 # Uncomment the line below if you want to process with_shared_clusters
 process_variant "with_shared_clusters"
 process_variant "without_shared_clusters"
-python3 tests/compare_efficiency_fake.py --file_with "${OUTPUTS_DIR}/CheckTracksCAwith_shared_clusters.root" --file_without "${OUTPUTS_DIR}/CheckTracksCAwithout_shared_clusters.root" --output "${OUTPUTS_DIR}/comparison.pdf"
+# python3 tests/compare_efficiency_fake.py --file_with "${OUTPUTS_DIR}/CheckTracksCAwith_shared_clusters.root" --file_without "${OUTPUTS_DIR}/CheckTracksCAwithout_shared_clusters.root" --output "${OUTPUTS_DIR}/comparison.pdf"
 
 cd "${ORIGINAL_DIR}"

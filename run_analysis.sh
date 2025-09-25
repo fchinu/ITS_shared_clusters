@@ -24,9 +24,9 @@ echo "======================================="
 draw_shared() {
     local venv_path=$1
     local script_path=$2
-    local input_file=$3
-    local output_file=$4
-    local all=$5
+    local input_file_with_shared=$3
+    local input_file_without_shared=$4
+    local output_file=$5
 
     # Save O2 Python env
     OLD_PYTHONHOME="${PYTHONHOME:-}"
@@ -38,8 +38,13 @@ draw_shared() {
 
     echo "➡️  Running ${script_path}"
 
-    if [ ! -f "${input_file}" ]; then
-        echo "❌ Error: Input file ${input_file} does not exist"
+    if [ ! -f "${input_file_with_shared}" ]; then
+        echo "❌ Error: Input file ${input_file_with_shared} does not exist"
+        exit 1
+    fi
+
+    if [ ! -f "${input_file_without_shared}" ]; then
+        echo "❌ Error: Input file ${input_file_without_shared} does not exist"
         exit 1
     fi
 
@@ -48,11 +53,7 @@ draw_shared() {
         exit 1
     fi
 
-    if [ "$all" = "true" ]; then
-        "${venv_path}/bin/python3" "${script_path}" "${input_file}" "${output_file}" --all
-    else
-        "${venv_path}/bin/python3" "${script_path}" "${input_file}" "${output_file}"
-    fi
+    "${venv_path}/bin/python3" "${script_path}" "${input_file_with_shared}" "${input_file_without_shared}" "${output_file}"
 
     # Restore O2 Python env
     if [ -n "${OLD_PYTHONHOME}" ]; then
@@ -74,7 +75,7 @@ study_doubly_reco() {
     local venv_path=$1
     local script_path=$2
     local input_file=$3
-    local output_file=$4
+        local output_file=$4
 
     # Save O2 Python env
     OLD_PYTHONHOME="${PYTHONHOME:-}"
@@ -116,19 +117,9 @@ study_doubly_reco() {
 
 # ======= Run scripts =======
 draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
+    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
     "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/without_shared_clusters/CheckTracksCAwithout_shared_clusters_all.pdf" \
-    true
-
-draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
-    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.pdf" \
-    false
-
-draw_shared "${VENV_PATH}" "${DRAW_SHARED_SCRIPT}" \
-    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
-    "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters_all.pdf" \
-    true
+    "${OUTPUT_DIR}/analysis_output.pdf" --breakdown-doubly-reco
 
 study_doubly_reco "${VENV_PATH}" "${STUDY_DOUBLY_RECO_SCRIPT}" \
     "${OUTPUT_DIR}/with_shared_clusters/CheckTracksCAwith_shared_clusters.parquet" \
