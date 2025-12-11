@@ -1,2 +1,6 @@
-tests/
-simulations/
+dev_tests/
+simulations
+
+*.d
+*.pcm
+*.so
