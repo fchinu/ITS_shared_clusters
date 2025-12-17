@@ -519,8 +519,8 @@ class SharedClustersAnalyzer:
             track_titles = {
                 TrackType.FAKE: 'Shared Clusters: "Fake" Tracks Only',
                 TrackType.DOUBLY_RECO: "Shared Clusters: Doubly Reco Tracks Only",
-                TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: 'No Shared Clusters: "Doubly Reco" (also w/o shared)',
-                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: 'No Shared Clusters: "Doubly Reco" (only w/ shared)',
+                TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: 'Shared Clusters: "Doubly Reco" (also w/o shared)',
+                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: 'Shared Clusters: "Doubly Reco" (only w/ shared)',
                 TrackType.GOOD: 'Shared Clusters: "Good" Tracks Only'
             }
         else:
