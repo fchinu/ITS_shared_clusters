@@ -15,6 +15,7 @@ OUTPUT_WITH = $(TRIAL_DIR)/with_shared_clusters
 
 # Simulation script
 SIM_SCRIPT = run_simulations.sh
+CLEAR_PY = $(SCRIPT_DIR)/macros/clear_simulations.py
 CHECK_SCRIPT = run_check.sh
 CHECK_MACRO = CheckTracksCA.C
 COMPARISON_SCRIPT = macros/compare_efficiency_fake.py
@@ -22,7 +23,7 @@ PREPROCESS_SH   = run_preprocess.sh
 PREPROCESS_PY  = $(SCRIPT_DIR)/macros/preprocess.py
 MATCH_ITS_AO2D = $(SCRIPT_DIR)/macros/matchItsAO2DTracks.cxx
 ANALYSIS_SH     = run_analysis.sh
-ANALYSIS_PY     = $(SCRIPT_DIR)/macros/draw_shared.py $(SCRIPT_DIR)/macros/study_doubly_reco.py 
+ANALYSIS_PY     = $(SCRIPT_DIR)/macros/draw_shared.py $(SCRIPT_DIR)/macros/study_doubly_reco.py
 
 # Configuration variables for simulation
 NWORKERS ?= 30
@@ -45,7 +46,7 @@ ANALYSIS_OUTPUT    = $(TRIAL_DIR)/analysis.done
 .PHONY: all clean-output help setup simulate-without copy-output simulate-with validate-environment force-simulate-with preprocess analysis
 
 # Default target
-all: validate-environment setup simulate-without copy-output simulate-with check preprocess analysis
+all: validate-environment setup simulate-without copy-output simulate-with clear check preprocess analysis
 
 # Help target
 help:
@@ -182,6 +183,16 @@ $(SIM_WITH_OUTPUT): $(COPY_OUTPUT)
 		exit 1; \
 	fi
 	@touch $@
+
+clear: $(CLEAR_PY)
+	@echo "Clearing simulation outputs..."
+	@python3 $(abspath $(CLEAR_PY)) --simulations-dir $(TRIAL_DIR)
+	@if [ $$? -eq 0 ]; then \
+		echo "✓ Clear completed successfully"; \
+	else \
+		echo "✗ Clear failed"; \
+		exit 1; \
+	fi
 
 # Run check script
 $(CHECK_OUTPUT): $(SIM_WITH_OUTPUT) $(SIM_WITHOUT_OUTPUT) $(CHECK_SCRIPT) $(COMPARISON_SCRIPT) $(CHECK_MACRO)
