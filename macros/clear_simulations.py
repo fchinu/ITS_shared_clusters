@@ -83,7 +83,7 @@ if __name__ == "__main__":
         description="Clear all simulation data from the simulations directory."
     )
     parser.add_argument(
-        "--simulations-dir",
+        "--trial-dir",
         type=str,
         help="Path to the simulations directory",
     )

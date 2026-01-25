@@ -16,6 +16,7 @@ OUTPUT_WITH = $(TRIAL_DIR)/with_shared_clusters
 # Simulation script
 SIM_SCRIPT = run_simulations.sh
 CLEAR_PY = $(SCRIPT_DIR)/macros/clear_simulations.py
+EXTEND_PY = $(SCRIPT_DIR)/macros/extend_aod_with_tracksel.py
 CHECK_SCRIPT = run_check.sh
 CHECK_MACRO = CheckTracksCA.C
 COMPARISON_SCRIPT = macros/compare_efficiency_fake.py
@@ -46,7 +47,7 @@ ANALYSIS_OUTPUT    = $(TRIAL_DIR)/analysis.done
 .PHONY: all clean-output help setup simulate-without copy-output simulate-with validate-environment force-simulate-with preprocess analysis
 
 # Default target
-all: validate-environment setup simulate-without copy-output simulate-with clear check preprocess analysis
+all: validate-environment setup simulate check preprocess analysis
 
 # Help target
 help:
@@ -184,13 +185,23 @@ $(SIM_WITH_OUTPUT): $(COPY_OUTPUT)
 	fi
 	@touch $@
 
-clear: $(CLEAR_PY)
+clear: $(CLEAR_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
 	@echo "Clearing simulation outputs..."
-	@python3 $(abspath $(CLEAR_PY)) --simulations-dir $(TRIAL_DIR)
+	@python3 $(abspath $(CLEAR_PY)) --trial-dir $(TRIAL_DIR)
 	@if [ $$? -eq 0 ]; then \
 		echo "✓ Clear completed successfully"; \
 	else \
 		echo "✗ Clear failed"; \
+		exit 1; \
+	fi
+
+extend: $(EXTEND_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
+	@echo "Extending AOD files with track selection information..."
+	@python3 $(abspath $(EXTEND_PY)) --trial-dir $(TRIAL_DIR)
+	@if [ $$? -eq 0 ]; then \
+		echo "✓ Extend completed successfully"; \
+	else \
+		echo "✗ Extend failed"; \
 		exit 1; \
 	fi
 
@@ -241,6 +252,7 @@ simulate-with: $(SIM_WITH_OUTPUT)
 check: $(CHECK_OUTPUT)
 preprocess: $(PREPROC_OUTPUT)
 analysis: $(ANALYSIS_OUTPUT)
+simulate: simulate-without copy-output simulate-with clear extend
 
 # Clean output files but preserve directory structure
 clean-output:
