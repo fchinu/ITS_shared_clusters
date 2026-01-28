@@ -1,0 +1,14 @@
+{ 
+  "track-selection": {
+    "ptMax": "1e+10",
+    "produceTable": "1",
+    "etaMin": "-0.8",
+    "isRun3": "1",
+    "itsMatching": "1",
+    "etaMax": "0.8",
+    "compatibilityIU": "0",
+    "dcaSetup": "0",
+    "ptMin": "0.1",
+    "produceFBextendedTable": "-1"
+  }
+}

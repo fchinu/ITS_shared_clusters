@@ -1,0 +1,10 @@
+{ "OutputDirector": {
+    "debug_mode": true,
+    "resfile": "AO2D",
+    "OutputDescriptors": [
+      {
+        "table": "AOD/TRACKSELECTION/0"
+      }
+    ],
+    "ntfmerge": 1
+  } }
