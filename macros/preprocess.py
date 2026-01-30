@@ -46,6 +46,7 @@ PDG_LABELS = {
     1114: r"\Delta^{\pm}",
     2212: "p",
     2224: r"\Delta^{++}",
+    3122: r"\Lambda",
     3112: r"\Sigma^{\pm}",
     1000822080: "Pb",
 }
@@ -97,7 +98,7 @@ def get_cylindrical(df):  # pylint: disable=redefined-outer-name
     df["clusterPhi[7]"] = list(phi)
 
 
-def main(input_file, output_file):
+def main(input_file, output_file):  # pylint: disable=too-many-locals
     """Main function to convert ROOT to Parquet."""
     # Look for all ROOT files in the input folder
     files = glob.glob(f"{input_file}/*.root")
@@ -115,8 +116,11 @@ def main(input_file, output_file):
         base_dir = file.split("/outputs/partial/")[0]
         variant = file.split("/outputs/partial/")[-1].split("/")[0]
         ao2d_file = os.path.join(base_dir, variant, f"tf{tf}", "AO2D.root")
-
-        os.system(f"root -l -b -q 'macros/matchItsAO2DTracks.cxx+(\"{outfile_root}\", \"{ao2d_file}\", {tf})'")
+        if not os.path.exists(ao2d_file):
+            ao2d_file = os.path.join(base_dir, variant, f"tf{tf}", "AO2D_with_tracksel.root")
+            os.system(
+                f"root -l -b -q 'macros/matchItsAO2DTracks.cxx+(\"{outfile_root}\", \"{ao2d_file}\", {tf})'"  # pylint: disable=line-too-long
+            )
         dfs[-1] = pd.concat([dfs[-1], get_df_matching(outfile_root)], axis=1)
         os.remove(outfile_root)
         dfs[-1]["tf"] = tf
@@ -143,9 +147,9 @@ def main(input_file, output_file):
         df.groupby(["event", "mcTrackID", "tf"])["mcTrackID"].transform("count") > 1
     )
 
-    N_LAYERS = 7
+    n_layers = 7
     df["layers_hits"] = df["clusters"].apply(
-        lambda x: [(x >> i) & 1 == 1 for i in range(N_LAYERS)]
+        lambda x: [(x >> i) & 1 == 1 for i in range(n_layers)]
     )
 
     df["n_hits"] = df["layers_hits"].apply(sum)
