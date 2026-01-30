@@ -142,31 +142,31 @@ def get_dfs_from_aod(input_aod_folder: str, with_sc: bool) -> tuple[pd.DataFrame
     tracks_df["fHasITS"] = tracks_df["fITSClusterSizes"] > 0
     tracks_df["fHasTPC"] = tracks_df["fTPCNClsFindable"] > 0
     tracks_df["fIsGlobal"] = (tracks_df['fTrackCutFlag'] & K_GLOBAL_TRACK) == K_GLOBAL_TRACK
+    tracks_df["fIsGlobalWoDca"] = (tracks_df['fTrackCutFlag'] & K_GLOBAL_TRACK_WO_DCA) == K_GLOBAL_TRACK_WO_DCA  # pylint: disable=line-too-long
     tracks_df["fHasTOF"] = (tracks_df["fTOFChi2"] > 0) & (tracks_df["fTOFExpMom"] > 0)
 
     tracks_df["fPt"] = np.abs(tracks_df["fSigned1Pt"]**-1)
 
     return tracks_df
 
-def plot_histogram(pdf, data_list, labels, xlabel, title=None, bins=50, x_range=None, log_y=True):
+def plot_histogram(pdf, data_list, labels, xlabel, title=None, bins=50, x_range=None, log_y=True):  # pylint: disable=too-many-arguments, too-many-positional-arguments
+    """
+    Plot histograms of the given data and save to PDF.
+
+    Parameters:
+    -----------
+    pdf (PdfPages): PDF file to save the plots.
+    data_list (list[pd.Series]): List of data series to plot.
+    labels (list[str]): List of labels for the data series.
+    xlabel (str): Label for the x-axis.
+    title (str, optional): Title of the plot. Defaults to None.
+    bins (int, optional): Number of bins for the histogram. Defaults to 50.
+    x_range (tuple, optional): Range for the x-axis. Defaults to None.
+    log_y (bool, optional): Whether to use logarithmic scale for y-axis. Defaults to True.
+    """
     fig, ax = plt.subplots(figsize=(8, 6))
     for data, label in zip(data_list, labels):
         ax.hist(data, bins=bins, alpha=0.5, label=label, range=x_range)
-    
-    if log_y:
-        ax.set_yscale('log')
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel("Counts")
-    ax.set_title(title)
-    if len(labels) > 1 or labels[0]:
-        ax.legend()
-    pdf.savefig(fig)
-    plt.close(fig)
-
-def plot_bars(pdf, data_list, labels, xlabel, title=None, log_y=True):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for data, label in zip(data_list, labels):
-        data.value_counts().sort_index().plot.bar(ax=ax, alpha=0.5, label=label)
 
     if log_y:
         ax.set_yscale('log')
@@ -178,21 +178,45 @@ def plot_bars(pdf, data_list, labels, xlabel, title=None, log_y=True):
     pdf.savefig(fig)
     plt.close(fig)
 
-def study_doubly_reco(
-    input_folder: str,
-    with_sc: bool,
-    output_pdf: str
-):  #pylint: disable=too-many-locals, too-many-statements
+def plot_bars(pdf, data_list, labels, xlabel, title=None, log_y=True):  # pylint: disable=too-many-arguments, too-many-positional-arguments
     """
-    Study doubly reconstructed ITS tracks in AOD data.
+    Plot bar charts of the given data and save to PDF.
+
+    Parameters:
+    -----------
+    pdf (PdfPages): PDF file to save the plots.
+    data_list (list[pd.Series]): List of data series to plot.
+    labels (list[str]): List of labels for the data series.
+    xlabel (str): Label for the x-axis.
+    title (str, optional): Title of the plot. Defaults to None.
+    log_y (bool, optional): Whether to use logarithmic scale for y-axis. Defaults to True.
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+    for i, (data, label) in enumerate(zip(data_list, labels)):
+        data.value_counts().sort_index().plot.bar(ax=ax, color=f"C{i}", alpha=0.5, label=label)
+
+    if log_y:
+        ax.set_yscale('log')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Counts")
+    ax.set_title(title)
+    if len(labels) > 1 or labels[0]:
+        ax.legend()
+    pdf.savefig(fig)
+    plt.close(fig)
+
+def get_folders_to_process(input_folder):
+    """
+    Get the list of folders to process from the input folder.
 
     Parameters:
     -----------
     input_folder (str): Path to the input folder containing simulation files.
-    with_sc (bool): Whether shared clusters were used in the simulation.
-    output_pdf (str): Path to the output PDF file to save the plots.
-    """
 
+    Returns:
+    -----------
+    list[str]: List of paths to folders to process.
+    """
     folders = [str(f.name) for f in Path(input_folder).iterdir() if f.is_dir()]
     batched = not ("with_shared_clusters" in folders or "without_shared_clusters" in folders)
 
@@ -202,108 +226,189 @@ def study_doubly_reco(
         folders_to_keep = []
         for f in folders:
             for subf in (Path(input_folder) / f).iterdir():
-                if subf.is_dir() and ("with_shared_clusters" in subf.name or "without_shared_clusters" in subf.name):
+                if subf.is_dir() and (
+                    "with_shared_clusters" in subf.name or "without_shared_clusters" in subf.name
+                ):
                     folders_to_keep.append(f)
                     break
         folders = folders_to_keep
     else:
         folders = [input_folder]
+    return folders
 
-    doubly_reco_info = {"n_total": [], "n_has_its": [], "n_has_tpc": [], "n_global": []}
-    doubly_reco_more_five_tpc_tracks = []
-    doubly_reco_more_two_its_tracks = []
-    doubly_reco_less_five_tpc_tracks = []
-    doubly_reco_less_two_its_tracks = []
-    tpc_its_correlation = {"n_tpc": [], "n_its": []}
-    df_aod_tot = []
-    for folder in folders:
-        # Load ITS track data
-        input_its = os.path.join(
-            folder,
-            "outputs",
-            f"{'with' if with_sc else 'without'}_shared_clusters",
-            f"CheckTracksCA{'with' if with_sc else 'without'}_shared_clusters.parquet"
+def study_doubly_reco(
+    input_folder: str,
+    output_pdf: str
+):  #pylint: disable=too-many-locals, too-many-statements
+    """
+    Study doubly reconstructed ITS tracks in AOD data.
+
+    Parameters:
+    -----------
+    input_folder (str): Path to the input folder containing simulation files.
+    output_pdf (str): Path to the output PDF file to save the plots.
+    """
+
+    folders = get_folders_to_process(input_folder)
+    doubly_reco_info = {True: {}, False: {}} # Whether with shared clusters or not
+    for with_sc in [True, False]:
+        doubly_reco_info[with_sc] = {
+            "n_total": [],
+            "n_has_its": [],
+            "n_has_tpc": [],
+            "n_global": [],
+            "n_global_wo_dca": [],
+        }
+    doubly_reco_more_five_tpc_tracks = {True: [], False: []}
+    doubly_reco_more_two_its_tracks = {True: [], False: []}
+    doubly_reco_less_five_tpc_tracks = {True: [], False: []}
+    doubly_reco_less_two_its_tracks = {True: [], False: []}
+    tpc_its_correlation = {True: {"n_tpc": [], "n_its": []}, False: {"n_tpc": [], "n_its": []}}
+    df_aod_tot = {True: [], False: []}
+    for with_sc in [True, False]:
+        # Lists to store results from ALL folders for the current 'with_sc' setting
+        all_info_dfs = []
+        all_tracks_more_5_tpc = []
+        all_tracks_less_5_tpc = []
+        all_tracks_more_2_its = []
+        all_tracks_less_2_its = []
+        all_aod_tracks = []
+
+        for folder in folders:
+            input_its = os.path.join(
+                folder, "outputs",
+                f"{'with' if with_sc else 'without'}_shared_clusters",
+                f"CheckTracksCA{'with' if with_sc else 'without'}_shared_clusters.parquet"
+            )
+            df_its = pd.read_parquet(input_its)
+            df_aod = get_dfs_from_aod(folder, with_sc)
+
+            df_aod["fEta"] = -1. * np.log(np.tan(np.pi/4. - 0.5*np.atan(df_aod["fTgl"])))
+            phi_raw = np.arcsin(df_aod["fSnp"]) + df_aod["fAlpha"]
+            df_aod["fPhi"] = phi_raw % (2 * np.pi)
+            df_aod["fTPCCrossedRows"] = df_aod['fTPCNClsFindable'] - df_aod["fTPCNClsFindableMinusCrossedRows"]  # pylint: disable=line-too-long
+            df_aod["fTPCCrossedRowsOverFindable"] = df_aod["fTPCCrossedRows"] / df_aod['fTPCNClsFindable']  # pylint: disable=line-too-long
+
+            aod_summary = df_aod.groupby(["fIndexMcParticles", "tf"]).agg(
+                n_total=("fPt", "count"),
+                n_has_its=("fHasITS", "sum"),
+                n_has_tpc=("fHasTPC", "sum"),
+                n_global=("fIsGlobal", "sum"),
+                n_global_wo_dca=("fIsGlobalWoDca", "sum")
+            ).reset_index()
+
+            dr_its_ids = df_its.query(
+                "same_mc_track_id"
+            )[["fIndexMcParticles", "tf"]].drop_duplicates()
+
+            folder_info = pd.merge(
+                dr_its_ids,
+                aod_summary,
+                on=["fIndexMcParticles", "tf"],
+                how="inner"
+            )
+            all_info_dfs.append(folder_info)
+
+            df_aod_dr = pd.merge(df_aod, folder_info, on=["fIndexMcParticles", "tf"])
+
+            all_tracks_more_5_tpc.append(df_aod_dr.query("n_has_tpc > 5"))
+            all_tracks_less_5_tpc.append(df_aod_dr.query("n_has_tpc <= 5"))
+            all_tracks_more_2_its.append(df_aod_dr.query("n_has_its > 2"))
+            all_tracks_less_2_its.append(df_aod_dr.query("n_has_its <= 2"))
+            all_aod_tracks.append(df_aod)
+
+        doubly_reco_info[with_sc] = pd.concat(all_info_dfs, ignore_index=True)
+
+        doubly_reco_more_five_tpc_tracks[with_sc] = pd.concat(
+            all_tracks_more_5_tpc,
+            ignore_index=True
         )
-        df_its = pd.read_parquet(input_its)
+        doubly_reco_less_five_tpc_tracks[with_sc] = pd.concat(
+            all_tracks_less_5_tpc,
+            ignore_index=True
+        )
+        doubly_reco_more_two_its_tracks[with_sc] = pd.concat(
+            all_tracks_more_2_its,
+            ignore_index=True
+        )
+        doubly_reco_less_two_its_tracks[with_sc] = pd.concat(
+            all_tracks_less_2_its,
+            ignore_index=True
+        )
 
-        # Load AOD data
-        df_aod = get_dfs_from_aod(folder, with_sc)
-        df_its_doubly_reco = df_its.query("same_mc_track_id")
-        doubly_reco_groups = df_its_doubly_reco.groupby(["fIndexMcParticles", "tf"])
+        df_aod_tot[with_sc] = pd.concat(all_aod_tracks, ignore_index=True)
 
-        df_aod["fEta"] = -1. * np.log(np.tan(np.pi/4. - 0.5*np.atan(df_aod["fTgl"])))
-        phi_raw = np.arcsin(df_aod["fSnp"]) + df_aod["fAlpha"]
-        df_aod["fPhi"] = phi_raw % (2 * np.pi)
-        df_aod["fTPCCrossedRows"] = df_aod['fTPCNClsFindable'] - df_aod["fTPCNClsFindableMinusCrossedRows"]
-        df_aod["fTPCCrossedRowsOverFindable"] = df_aod["fTPCCrossedRows"] / df_aod['fTPCNClsFindable']
-        df_aod_tot.append(df_aod)
-
-        for (mc_id, tf), group in doubly_reco_groups:  # pylint: disable=unused-variable
-            aod_tracks = df_aod.query("fIndexMcParticles == @mc_id and tf == @tf")
-
-            doubly_reco_info["n_total"].append(len(aod_tracks))
-            doubly_reco_info["n_has_its"].append(len(aod_tracks.query("fHasITS")))
-            doubly_reco_info["n_has_tpc"].append(len(aod_tracks.query("fHasTPC")))
-            doubly_reco_info["n_global"].append(len(aod_tracks.query("fIsGlobal")))
-
-            if len(aod_tracks.query("fHasTPC")) > 5:
-                doubly_reco_more_five_tpc_tracks.append(aod_tracks)
-            if len(aod_tracks.query("fHasITS")) > 2:
-                doubly_reco_more_two_its_tracks.append(aod_tracks)
-            if len(aod_tracks.query("fHasTPC")) <= 5:
-                doubly_reco_less_five_tpc_tracks.append(aod_tracks)
-            if len(aod_tracks.query("fHasITS")) <= 2:
-                doubly_reco_less_two_its_tracks.append(aod_tracks)
-
-            tpc_its_correlation["n_tpc"].append(len(aod_tracks.query("fHasTPC")))
-            tpc_its_correlation["n_its"].append(len(aod_tracks.query("fHasITS")))
-
-    doubly_reco_info = pd.DataFrame(doubly_reco_info)
-    doubly_reco_more_five_tpc_tracks = pd.concat(doubly_reco_more_five_tpc_tracks, ignore_index=True)
-    doubly_reco_more_two_its_tracks = pd.concat(doubly_reco_more_two_its_tracks, ignore_index=True)
-    doubly_reco_less_five_tpc_tracks = pd.concat(doubly_reco_less_five_tpc_tracks, ignore_index=True)
-    doubly_reco_less_two_its_tracks = pd.concat(doubly_reco_less_two_its_tracks, ignore_index=True)
-    df_aod_tot = pd.concat(df_aod_tot, ignore_index=True)
+        tpc_its_correlation[with_sc]["n_tpc"] = doubly_reco_info[with_sc]["n_has_tpc"]
+        tpc_its_correlation[with_sc]["n_its"] = doubly_reco_info[with_sc]["n_has_its"]
 
     # Produce figures
     if not os.path.exists(os.path.dirname(output_pdf)):
         os.makedirs(os.path.dirname(output_pdf))
     with PdfPages(output_pdf) as pdf:
         # Draw the number of AOD tracks matched to doubly-reco ITS tracks
-        keys = ["n_total", "n_has_its", "n_has_tpc", "n_global"]
+        keys = ["n_total", "n_has_its", "n_has_tpc", "n_global", "n_global_wo_dca"]
         titles = [
             "Doubly reconstructed ITS tracks matched to AOD tracks",
             "Doubly reconstructed ITS tracks matched to AOD tracks with ITS",
             "Doubly reconstructed ITS tracks matched to AOD tracks with TPC",
-            "Doubly reconstructed ITS tracks matched to global AOD tracks"
+            "Doubly reconstructed ITS tracks matched to global AOD tracks",
+            "Doubly reconstructed ITS tracks matched to global without DCA AOD tracks"
         ]
         xlabels = [
             "Number of AOD tracks matched to doubly-reco ITS tracks",
             "Number of AOD tracks with ITS matched to doubly-reco ITS tracks",
             "Number of AOD tracks with TPC matched to doubly-reco ITS tracks",
-            "Number of global AOD tracks matched to doubly-reco ITS tracks"
+            "Number of global AOD tracks matched to doubly-reco ITS tracks",
+            "Number of global without DCA AOD tracks matched to doubly-reco ITS tracks"
         ]
         for key, title, xlabel in zip(keys, titles, xlabels):
             plot_bars(
                 pdf,
-                [doubly_reco_info[key]],
-                [""],
+                [doubly_reco_info[True][key], doubly_reco_info[False][key]],
+                ["With shared clusters", "Without shared clusters"],
                 xlabel,
                 title=title,
                 log_y=True
             )
 
-        # Draw distributions of track parameters for doubly-reco ITS tracks with different number of AOD tracks
-        vars_to_plot = ['fPt', 'fEta', 'fTPCNClsFindable', 'fTPCCrossedRows', 'fTPCCrossedRowsOverFindable', 'fTPCChi2NCl', 'fPhi']
-        xaxis_title = [r"$p_\mathrm{T} (\mathrm{GeV}/c)$", r"$\eta$", "TPC findable clusters", "TPC crossed rows", "TPC crossed rows/findable clusters", r"$\chi^2$/NCl", r"$\phi$"]
+        # Draw distributions of track parameters for doubly-reco ITS tracks
+        # with different number of AOD tracks
+        vars_to_plot = [
+            'fPt',
+            'fEta',
+            'fTPCNClsFindable',
+            'fTPCCrossedRows',
+            'fTPCCrossedRowsOverFindable',
+            'fTPCChi2NCl',
+            'fPhi'
+        ]
+        xaxis_title = [
+            r"$p_\mathrm{T} (\mathrm{GeV}/c)$",
+            r"$\eta$",
+            "TPC findable clusters",
+            "TPC crossed rows",
+            "TPC crossed rows/findable clusters",
+            r"$\chi^2$/NCl",
+            r"$\phi$"
+        ]
         bins = [50, 50, 50, 50, 50, 50, 50]
         ranges = [(0, 10), (-1, 1), (0, 200), (0, 200), (0, 2), (0, 10), (0, 2*np.pi)]
 
         for var, xlabel, bin_num, x_range in zip(vars_to_plot, xaxis_title, bins, ranges):
             plot_histogram(
                 pdf,
-                [doubly_reco_more_five_tpc_tracks[var], doubly_reco_less_five_tpc_tracks[var]],
-                ["> 5 TPC tracks", "<= 5 TPC tracks"],
+                [
+                    doubly_reco_less_five_tpc_tracks[True][var],
+                    doubly_reco_less_five_tpc_tracks[False][var],
+                    doubly_reco_more_five_tpc_tracks[True][var],
+                    doubly_reco_more_five_tpc_tracks[False][var],
+                ],
+                [
+                    "<= 5 TPC tracks, With shared clusters",
+                    "<= 5 TPC tracks, Without shared clusters",
+                    "> 5 TPC tracks, With shared clusters",
+                    "> 5 TPC tracks, Without shared clusters",
+                ],
                 xlabel,
                 bins=bin_num,
                 x_range=x_range,
@@ -312,34 +417,31 @@ def study_doubly_reco(
 
             plot_histogram(
                 pdf,
-                [doubly_reco_more_two_its_tracks[var], doubly_reco_less_two_its_tracks[var]],
-                ["> 2 ITS tracks", "<= 2 ITS tracks"],
+                [
+                    doubly_reco_less_two_its_tracks[True][var],
+                    doubly_reco_less_two_its_tracks[False][var],
+                    doubly_reco_more_two_its_tracks[True][var],
+                    doubly_reco_more_two_its_tracks[False][var],
+                ],
+                [
+                    "<= 2 ITS tracks, With shared clusters",
+                    "<= 2 ITS tracks, Without shared clusters",
+                    "> 2 ITS tracks, With shared clusters",
+                    "> 2 ITS tracks, Without shared clusters",
+                ],
                 xlabel,
                 bins=bin_num,
                 x_range=x_range,
                 log_y=True
             )
 
-        fig, ax = plt.subplots(figsize=(8,6))
-        h, xedges, yedges = np.histogram2d(
-            doubly_reco_more_five_tpc_tracks['fTPCCrossedRowsOverFindable'],
-            doubly_reco_more_five_tpc_tracks['fTPCNClsFindable'],
-            bins=(50, 50),
-            range=((0, 3), (0, 160))
-        )
-        pcm = ax.pcolormesh(xedges, yedges, h.T, norm=plt.matplotlib.colors.LogNorm())
-        fig.colorbar(pcm, ax=ax, label='Counts')
-        ax.set_xlabel("Crossed rows / findable")
-        ax.set_ylabel("Findable")
-        ax.set_title("Correlation between number of AOD tracks with TPC and ITS")
-        pdf.savefig(fig)
-        plt.close(fig)
-
-        failed_global = doubly_reco_more_five_tpc_tracks[~doubly_reco_more_five_tpc_tracks["fIsGlobal"]].query("fTPCCrossedRows > 70")
+        failed_global = doubly_reco_more_five_tpc_tracks[True][
+            ~doubly_reco_more_five_tpc_tracks[True]["fIsGlobal"]  # pylint: disable=invalid-sequence-index
+        ].query("fTPCCrossedRows > 70")
         rejection_counts = {}
 
         for bit, label in CUT_LABELS.items():
-            # A cut is 'failed' if the bit is required by K_GLOBAL_TRACK 
+            # A cut is 'failed' if the bit is required by K_GLOBAL_TRACK
             # but NOT present in fTrackCutFlag
             if bit & K_GLOBAL_TRACK:
                 num_failed = (failed_global["fTrackCutFlag"] & bit == 0).sum()
@@ -351,7 +453,10 @@ def study_doubly_reco(
         fig, ax = plt.subplots(figsize=(10, 8))
         df_rejection.plot.barh(ax=ax, color='salmon', edgecolor='black')
         ax.set_xlabel("Number of Tracks Failing Cut")
-        ax.set_title("Reasons for Failing Global Track Selection")
+        ax.set_title(
+            "Failed global track selection for doubly-reco ITS tracks " \
+            "with >5 TPC AOD tracks and >70 TPC crossed rows"
+        )
         ax.grid(axis='x', linestyle='--', alpha=0.7)
         plt.tight_layout()
         pdf.savefig(fig)
@@ -359,15 +464,35 @@ def study_doubly_reco(
 
         fig, ax = plt.subplots(figsize=(8,6))
         h, xedges, yedges = np.histogram2d(
-            tpc_its_correlation["n_tpc"],
-            tpc_its_correlation["n_its"],
+            tpc_its_correlation[True]["n_tpc"],
+            tpc_its_correlation[True]["n_its"],
             bins=(range(0, 15), range(0, 10))
         )
         pcm = ax.pcolormesh(xedges, yedges, h.T, norm=plt.matplotlib.colors.LogNorm())
         fig.colorbar(pcm, ax=ax, label='Counts')
         ax.set_xlabel("Number of AOD tracks with TPC")
         ax.set_ylabel("Number of AOD tracks with ITS")
-        ax.set_title("Correlation between number of AOD tracks with TPC and ITS")
+        ax.set_title(
+            "Number of AOD tracks with TPC and ITS for doubly-reco ITS tracks"
+            " (With shared clusters)"
+        )
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(8,6))
+        h, xedges, yedges = np.histogram2d(
+            tpc_its_correlation[False]["n_tpc"],
+            tpc_its_correlation[False]["n_its"],
+            bins=(range(0, 15), range(0, 10))
+        )
+        pcm = ax.pcolormesh(xedges, yedges, h.T, norm=plt.matplotlib.colors.LogNorm())
+        fig.colorbar(pcm, ax=ax, label='Counts')
+        ax.set_xlabel("Number of AOD tracks with TPC")
+        ax.set_ylabel("Number of AOD tracks with ITS")
+        ax.set_title(
+            "Number of AOD tracks with TPC and ITS for doubly-reco ITS tracks"
+            " (Without shared clusters)"
+        )
         pdf.savefig(fig)
         plt.close(fig)
 
@@ -381,23 +506,11 @@ if __name__ == "__main__":
         help="Input folder containing simulation files.",
     )
     parser.add_argument(
-        "--with_sc", "-w",
-        action="store_true",
-        help="If shared clusters were used in the simulation.",
-    )
-    parser.add_argument(
-        "--without_sc", "-wo",
-        action="store_true",
-        help="If shared clusters were not used in the simulation.",
-    )
-    parser.add_argument(
         "output",
         type=str,
         help="Output PDF file to save the plots.",
     )
     args = parser.parse_args()
 
-    if (args.with_sc and args.without_sc) or (not args.with_sc and not args.without_sc):
-        raise ValueError("Please select either --with_sc or --without_sc, not both.")
 
-    study_doubly_reco(args.sim_folder, args.with_sc, args.output)
+    study_doubly_reco(args.sim_folder, args.output)
