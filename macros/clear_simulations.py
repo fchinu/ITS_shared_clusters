@@ -1,3 +1,4 @@
+"""Script to clear unused simulation data from the simulations directory."""
 import argparse
 from pathlib import Path
 
@@ -23,11 +24,23 @@ def get_all_tf_folders(input_folder: str) -> list[str]:
 
     if batched:
         for folder in folders:
-            subfolders = [f for f in (input_folder / folder).iterdir() if f.name in ("with_shared_clusters", "without_shared_clusters")]
-            tf_folders.extend([s for subfolder in subfolders for s in subfolder.iterdir() if s.is_dir() and "tf" in s.name])
+            subfolders = [
+                f for f in (input_folder / folder).iterdir()
+                    if f.name in ("with_shared_clusters", "without_shared_clusters")
+            ]
+            tf_folders.extend([
+                s for subfolder in subfolders for s in subfolder.iterdir()
+                    if s.is_dir() and "tf" in s.name
+            ])
     else:
-        subfolders = [f for f in input_folder.iterdir() if f.name in ("with_shared_clusters", "without_shared_clusters")]
-        tf_folders = [s for subfolder in subfolders for s in subfolder.iterdir() if s.is_dir() and "tf" in s.name]
+        subfolders = [
+            f for f in input_folder.iterdir()
+                if f.name in ("with_shared_clusters", "without_shared_clusters")
+        ]
+        tf_folders = [
+            s for subfolder in subfolders for s in subfolder.iterdir()
+                if s.is_dir() and "tf" in s.name
+        ]
 
     return tf_folders
 
@@ -89,6 +102,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    clear_simulations(args.simulations_dir)
-
-    
+    clear_simulations(args.trial_dir)
