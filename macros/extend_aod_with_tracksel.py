@@ -1,15 +1,18 @@
+"""Script to extend AOD files with track selection information."""
+
 import argparse
 import os
 from pathlib import Path
+import sys
 
 def get_all_tf_folders(input_folder: str) -> list[str]:
     """
     Get all timeframe folders from the input folder.
-    
+
     Parameters:
     -----------
     input_folder (str): Path to the input folder containing timeframe folders.
-    
+
     Returns:
     -----------
     list[str]: List of paths to timeframe folders.
@@ -24,19 +27,38 @@ def get_all_tf_folders(input_folder: str) -> list[str]:
 
     if batched:
         for folder in folders:
-            subfolders = [f for f in (input_folder / folder).iterdir() if f.name in ("with_shared_clusters", "without_shared_clusters")]
-            tf_folders.extend([s for subfolder in subfolders for s in subfolder.iterdir() if s.is_dir() and "tf" in s.name])
+            subfolders = [
+                f for f in (input_folder / folder).iterdir()
+                    if f.name in ("with_shared_clusters", "without_shared_clusters")
+            ]
+            tf_folders.extend([
+                s for subfolder in subfolders for s in subfolder.iterdir()
+                    if s.is_dir() and "tf" in s.name
+            ])
     else:
-        subfolders = [f for f in input_folder.iterdir() if f.name in ("with_shared_clusters", "without_shared_clusters")]
-        tf_folders = [s for subfolder in subfolders for s in subfolder.iterdir() if s.is_dir() and "tf" in s.name]
+        subfolders = [f for f in input_folder.iterdir()
+            if f.name in ("with_shared_clusters", "without_shared_clusters")
+        ]
+        tf_folders = [s for subfolder in subfolders for s in subfolder.iterdir()
+            if s.is_dir() and "tf" in s.name
+        ]
 
     return tf_folders
 
 
 def run_task(trial_dir):
+    """Main function to extend AOD with track selection information."""
     # Load configuration
-    config_path = os.path.join(Path(__file__).parent.parent, "configs", "configuration_track_sel.json")
-    output_director_path = os.path.join(Path(__file__).parent.parent, "configs", "OutputDirector.json")
+    config_path = os.path.join(
+        Path(__file__).parent.parent,
+        "configs",
+        "configuration_track_sel.json"
+    )
+    output_director_path = os.path.join(
+        Path(__file__).parent.parent,
+        "configs",
+        "OutputDirector.json"
+    )
 
     trial_dir = Path(trial_dir)
 
@@ -47,17 +69,17 @@ def run_task(trial_dir):
     for tf_folder in tf_folders:
         os.chdir(tf_folder)
         print(f"in folder: {os.getcwd()}")
-        if (tf_folder / "AO2D.root").exists() and not (tf_folder / "AO2D_old.root").exists():
+        if os.path.exists("AO2D.root") and not os.path.exists("AO2D_old.root"):
             os.rename(
-                tf_folder / "AO2D.root",
-                tf_folder / "AO2D_old.root"
+                "AO2D.root",
+                "AO2D_old.root"
             )
 
-        bash_path = tf_folder / "extend_aod_with_tracksel.sh"
-        if bash_path.exists():
+        bash_path = "extend_aod_with_tracksel.sh"
+        if os.path.exists(bash_path):
             os.remove(bash_path)
-        
-        with open(bash_path, "w") as bash_file:
+
+        with open("extend_aod_with_tracksel.sh", "w", encoding="utf-8") as bash_file:
             bash_file.write(
                 f"""
 #!/bin/bash
@@ -68,7 +90,11 @@ OPTION="-b --configuration json://{config_path}"
 # Tree creator
 o2-analysis-propagationservice $OPTION |
 o2-analysis-event-selection-service $OPTION |
-o2-analysis-trackselection $OPTION --aod-file AO2D_old.root --aod-writer-json {output_director_path} --shm-segment-size 3000000000 --aod-parent-access-level 1  > "$LOGFILE" 2>&1
+o2-analysis-trackselection $OPTION \
+    --aod-file AO2D_old.root \
+    --aod-writer-json {output_director_path} \
+    --shm-segment-size 3000000000 \
+    --aod-parent-access-level 1  > "$LOGFILE" 2>&1
 
 # report status
 rc=$?
@@ -82,13 +108,17 @@ fi
 """
             )
 
-        os.system(f"bash {bash_path}")
+        os.system(f"alienv setenv O2Physics/latest -c bash {bash_path}")
 
-        os.system(f"hadd -f {tf_folder / 'AO2D_with_tracksel.root'} {tf_folder / 'AO2D_old.root'} {tf_folder / 'AO2D.root'}")
-        os.remove(tf_folder / "AO2D.root")
-        os.remove(tf_folder / "AnalysisResults.root")
+        status = os.system("hadd -f AO2D_with_tracksel.root AO2D_old.root AO2D.root")
+        if status != 0:
+            print("hadd failed; AO2D.root was not removed.")
+            os.chdir(pwd)
+            sys.exit()
+        os.remove("AO2D.root")
+        os.remove("AnalysisResults.root")
         os.remove(bash_path)
-    os.chdir(pwd)
+        os.chdir(pwd)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
