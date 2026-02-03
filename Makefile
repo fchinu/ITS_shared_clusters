@@ -39,6 +39,8 @@ SOURCE_FILE = $(TRIAL_DIR)/source.sh
 SIM_WITHOUT_OUTPUT = $(OUTPUT_WITHOUT)/simulation.done
 SIM_WITH_OUTPUT = $(OUTPUT_WITH)/simulation.done
 COPY_OUTPUT = $(OUTPUT_WITH)/copy.done
+CLEAR_OUTPUT = $(TRIAL_DIR)/clear.done
+EXTEND_OUTPUT = $(TRIAL_DIR)/extend.done
 CHECK_OUTPUT = $(TRIAL_DIR)/check.done
 PREPROC_OUTPUT = $(TRIAL_DIR)/preprocess.done
 ANALYSIS_OUTPUT    = $(TRIAL_DIR)/analysis.done
@@ -185,7 +187,7 @@ $(SIM_WITH_OUTPUT): $(COPY_OUTPUT)
 	fi
 	@touch $@
 
-clear: $(CLEAR_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
+$(CLEAR_OUTPUT): $(CLEAR_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
 	@echo "Clearing simulation outputs..."
 	@python3 $(abspath $(CLEAR_PY)) --trial-dir $(TRIAL_DIR)
 	@if [ $$? -eq 0 ]; then \
@@ -195,7 +197,7 @@ clear: $(CLEAR_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
 		exit 1; \
 	fi
 
-extend: $(EXTEND_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
+$(EXTEND_OUTPUT): $(EXTEND_PY) $(SIM_WITHOUT_OUTPUT) $(SIM_WITH_OUTPUT) $(COPY_OUTPUT)
 	@echo "Extending AOD files with track selection information..."
 	@python3 $(abspath $(EXTEND_PY)) --trial-dir $(TRIAL_DIR)
 	@if [ $$? -eq 0 ]; then \
@@ -236,7 +238,7 @@ $(PREPROC_OUTPUT): $(CHECK_OUTPUT) $(PREPROCESS_PY) $(PREPROCESS_SH) $(MATCH_ITS
 
 $(ANALYSIS_OUTPUT): $(PREPROC_OUTPUT) $(ANALYSIS_PY) $(ANALYSIS_SH)
 	@echo "Running analysis script..."
-	@export OUTPUT_DIR="$(TRIAL_DIR)/outputs" && bash $(abspath $(ANALYSIS_SH))
+	@export OUTPUT_DIR="$(TRIAL_DIR)" && bash $(abspath $(ANALYSIS_SH))
 	@if [ $$? -eq 0 ]; then \
 		echo "✓ Analysis completed successfully"; \
 	else \
@@ -249,6 +251,8 @@ $(ANALYSIS_OUTPUT): $(PREPROC_OUTPUT) $(ANALYSIS_PY) $(ANALYSIS_SH)
 simulate-without: $(SIM_WITHOUT_OUTPUT)
 copy-output: $(COPY_OUTPUT)
 simulate-with: $(SIM_WITH_OUTPUT)
+clear: $(CLEAR_OUTPUT)
+extend: $(EXTEND_OUTPUT)
 check: $(CHECK_OUTPUT)
 preprocess: $(PREPROC_OUTPUT)
 analysis: $(ANALYSIS_OUTPUT)
