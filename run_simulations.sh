@@ -98,7 +98,7 @@ echo "Running simulation workflow..."
 if [ "${SHARED_CLUSTERS}" = "false" ]; then
     ${O2DPG_ROOT}/MC/bin/o2_dpg_workflow_runner.py -f workflow.json -tt aod --cpu-limit 32
 else
-    ${O2DPG_ROOT}/MC/bin/o2_dpg_workflow_runner.py -f workflow.json -tt aod --cpu-limit 32 --rerun-from itsreco_1
+    ${O2DPG_ROOT}/MC/bin/o2_dpg_workflow_runner.py -f workflow.json -tt aod --cpu-limit 32 --rerun-from itsreco_*
 fi
 
 if [ $? -ne 0 ]; then
