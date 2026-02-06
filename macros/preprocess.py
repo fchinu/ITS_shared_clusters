@@ -7,6 +7,7 @@ import sys
 import uproot
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 sys.path.append(".")
 from utils.data_matcher import (  # pylint: disable=wrong-import-position, import-error  # noqa: E402
@@ -98,32 +99,41 @@ def get_cylindrical(df):  # pylint: disable=redefined-outer-name
     df["clusterPhi[7]"] = list(phi)
 
 
-def main(input_file, output_file):  # pylint: disable=too-many-locals
+def main(input_folder, output_file):  # pylint: disable=too-many-locals
     """Main function to convert ROOT to Parquet."""
     # Look for all ROOT files in the input folder
-    files = glob.glob(f"{input_file}/*.root")
-    tfs = [int(f.split("_")[-1].split(".root")[0].split("tf")[-1]) for f in files]
+    input_folder = Path(input_folder)
 
     dfs = []
-    for file, tf in zip(files, tfs):
-        dfs.append(get_df_from_output(file))
+    for iteration_dir in input_folder.iterdir():
+        if not iteration_dir.is_dir():
+            continue
+        
+        files = list(iteration_dir.glob("*.root"))
+        tfs = [int(f.name.split("tf")[-1].split(".root")[0]) for f in files]
 
-        outfile_root = output_file.replace(".parquet", f"tf{tf}.root")
-        cols_matching = ["event", "pdg", "pt", "eta", "phi"]
-        with uproot.recreate(outfile_root) as f:
-            f["RecoTracks"] = dfs[-1][cols_matching]
+        for file, tf in zip(files, tfs):
+            dfs.append(get_df_from_output(file))
 
-        base_dir = file.split("/outputs/partial/")[0]
-        variant = file.split("/outputs/partial/")[-1].split("/")[0]
-        ao2d_file = os.path.join(base_dir, variant, f"tf{tf}", "AO2D.root")
-        if not os.path.exists(ao2d_file):
-            ao2d_file = os.path.join(base_dir, variant, f"tf{tf}", "AO2D_with_tracksel.root")
+            outfile_root = output_file.replace(".parquet", f"tf{tf}.root")
+            cols_matching = ["event", "pdg", "pt", "eta", "phi"]
+            with uproot.recreate(outfile_root) as f:
+                f["RecoTracks"] = dfs[-1][cols_matching]
+
+            base_dir = input_folder.parent.parent.parent
+            iteration = iteration_dir.name
+            variant = input_folder.name
+
+            ao2d_file = base_dir / variant / iteration / f"tf{tf}" / "AO2D.root"
+            if not os.path.exists(ao2d_file):
+                ao2d_file = base_dir / variant / iteration / f"tf{tf}" / "AO2D_with_tracksel.root"
             os.system(
                 f"root -l -b -q 'macros/matchItsAO2DTracks.cxx+(\"{outfile_root}\", \"{ao2d_file}\", {tf})'"  # pylint: disable=line-too-long
             )
-        dfs[-1] = pd.concat([dfs[-1], get_df_matching(outfile_root)], axis=1)
-        os.remove(outfile_root)
-        dfs[-1]["tf"] = tf
+            dfs[-1] = pd.concat([dfs[-1], get_df_matching(outfile_root)], axis=1)
+            os.remove(outfile_root)
+            dfs[-1]["tf"] = tf
+            dfs[-1]["iteration"] = iteration
 
     df = pd.concat(dfs, ignore_index=True)
     get_cylindrical(df)
@@ -138,13 +148,13 @@ def main(input_file, output_file):  # pylint: disable=too-many-locals
     )
     df.loc[shared_mask, "isGoodMother"] = (
         df[shared_mask]
-        .groupby(["event", "motherTrackId", "tf"])["motherTrackId"]
+        .groupby(["event", "motherTrackId", "tf", "iteration"])["motherTrackId"]
         .transform("count")
         > 1
     )
 
     df.loc[:, "same_mc_track_id"] = (
-        df.groupby(["event", "mcTrackID", "tf"])["mcTrackID"].transform("count") > 1
+        df.groupby(["event", "mcTrackID", "tf", "iteration"])["mcTrackID"].transform("count") > 1
     )
 
     n_layers = 7

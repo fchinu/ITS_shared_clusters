@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.colors as mcolors
 
 
 class TrackType(Enum):
@@ -113,9 +114,9 @@ class HistogramPlotter:
     TRACK_CONFIGS = {
         TrackType.FAKE: TrackTypeConfig("red", "Fake (Total: {})"),
         TrackType.GOOD: TrackTypeConfig("blue", "Good (Total: {})"),
-        TrackType.DOUBLY_RECO: TrackTypeConfig("green", "Doubly Reco (Total: {})"),
-        TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: TrackTypeConfig("darkgreen", "Doubly Reco Also w/o Shared (Total: {})"),  # pylint: disable=line-too-long
-        TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: TrackTypeConfig("limegreen", "Doubly Reco Only w/ Shared (Total: {})"),  # pylint: disable=line-too-long
+        TrackType.DOUBLY_RECO: TrackTypeConfig("green", "Multiply-Reco (Total: {})"),
+        TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: TrackTypeConfig("darkgreen", "Multiply-Reco Also w/o Shared (Total: {})"),  # pylint: disable=line-too-long
+        TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: TrackTypeConfig("limegreen", "Multiply-Reco Only w/ Shared (Total: {})"),  # pylint: disable=line-too-long
     }
 
     def __init__(self, config: PlotConfig = None):
@@ -410,9 +411,12 @@ class Histogram2DPlotter:
         hist_display = hist.copy().astype(float)
         hist_display[hist_display == 0] = np.nan
 
+        cmap = plt.get_cmap(self.COLORMAPS[track_type])(np.linspace(0.3, 1.0, 256))
+        cmap = mcolors.ListedColormap(cmap)
+
         im = ax.imshow(
             hist_display.T, origin="lower", aspect="auto",
-            cmap=self.COLORMAPS[track_type],
+            cmap=cmap,
             extent=[0, len(unique_labels), 0, 7], vmin=0
         )
 
@@ -532,13 +536,13 @@ class SharedClustersAnalyzer:
                     folder,
                     "outputs",
                     "with_shared_clusters",
-                    "CheckTracksCAwith_shared_clusters.parquet"
+                    "CheckTracksCA.parquet"
                 )))
             df_without.append(pd.read_parquet(os.path.join(
                     folder,
                     "outputs",
                     "without_shared_clusters",
-                    "CheckTracksCAwithout_shared_clusters.parquet"
+                    "CheckTracksCA.parquet"
                 )))
         df_with = pd.concat(df_with, ignore_index=True)
         df_without = pd.concat(df_without, ignore_index=True)
