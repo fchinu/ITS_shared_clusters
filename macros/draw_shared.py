@@ -122,7 +122,7 @@ class HistogramPlotter:
     def __init__(self, config: PlotConfig = None):
         self.config = config or PlotConfig()
 
-    def _prepare_labels(self, all_labels: List[str]) -> Tuple[List[str], Dict[str, int]]:
+    def prepare_labels(self, all_labels: List[str]) -> Tuple[List[str], Dict[str, int]]:
         """Prepare labels with consistent ordering, moving 'others' to end"""
         label_counts = Counter(all_labels)
         others_count = label_counts.pop("others", 0)
@@ -152,7 +152,7 @@ class HistogramPlotter:
         if not labels:
             return None
 
-        plot_labels, _ = self._prepare_labels(labels)
+        plot_labels, _ = self.prepare_labels(labels)
         label_counts = Counter(labels)
         counts = [label_counts.get(label, 0) for label in plot_labels]
 
@@ -191,8 +191,8 @@ class HistogramPlotter:
         if not all_labels:
             return None
 
-        # Use _prepare_labels to get properly sorted labels
-        plot_labels, _ = self._prepare_labels(all_labels)
+        # Use prepare_labels to get properly sorted labels
+        plot_labels, _ = self.prepare_labels(all_labels)
 
         # Count occurrences for each track type using the sorted labels
         track_counts = {}
@@ -575,6 +575,8 @@ class SharedClustersAnalyzer:
             print("Generating plots without shared clusters...")
             self._save_plots_to_pdf(pdf, track_data_without, cluster_sharing=False)
 
+            self._save_efficiency(pdf, track_data_with, track_data_without)
+
     def _save_plots_to_pdf(
             self,
             pdf: PdfPages,
@@ -643,6 +645,96 @@ class SharedClustersAnalyzer:
         if fig:
             pdf.savefig(fig)
             plt.close(fig)
+
+    def _save_efficiency(self, pdf, track_data_with, track_data_without):
+        data_types = list(track_data_with.keys())
+        if TrackType.DOUBLY_RECO in data_types:
+            data_types.pop(data_types.index(TrackType.DOUBLY_RECO))
+        
+        all_labels = []
+        for typ in data_types:
+            df_without = track_data_without[typ]
+            if len(df_without) > 0:
+                all_labels.extend(df_without["label"].tolist())
+
+        if not all_labels:
+            return None
+
+        plot_labels, _ = self.hist_plotter.prepare_labels(all_labels)
+        x_pos = np.arange(len(plot_labels))
+        
+        # Define markers for different track types
+        markers = ['o', 's', 'x']
+
+        track_counts = {True: {}, False: {}}
+        for shared in [True, False]:
+            data_source = track_data_with if shared else track_data_without
+            for track_type, df in data_source.items():
+                labels = df["label"].tolist() if len(df) > 0 else []
+                label_counter = Counter(labels)
+                track_counts[shared][track_type] = np.array([label_counter.get(label, 0) for label in plot_labels])
+
+        fig, ax = plt.subplots(figsize=self.hist_plotter.config.figure_size)
+        ax.set_yscale('log')
+        
+        order = [TrackType.FAKE, TrackType.DOUBLY_RECO_ONLY_WITH_SHARED, TrackType.GOOD]
+        
+        total_counts = np.zeros(len(plot_labels))
+        for t in order:
+            if t in track_counts[False]:
+                total_counts += track_counts[False][t]
+
+        safe_total = np.where(total_counts == 0, np.nan, total_counts)
+        bottoms = np.zeros(len(plot_labels))
+        legends = {
+            TrackType.FAKE: "Fake",
+            TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
+            TrackType.GOOD: "Good"
+        }
+
+        for i, track_type in enumerate(order):
+            if track_type not in track_counts[True]:
+                continue
+                
+            counts = track_counts[True][track_type]
+            efficiencies = counts/safe_total
+            # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
+
+            current_tops = bottoms + efficiencies
+            color = f"C{i}"
+            
+            ax.errorbar(
+                x_pos, current_tops, 
+                xerr=0.5, 
+                fmt=markers[i], 
+                color=color,
+                markersize=5,
+                capsize=0,
+                label=legends[track_type]
+            )
+
+            for x, eff_val, total_height in zip(x_pos, efficiencies, current_tops):
+                if eff_val > 0:
+                    ax.text(
+                        x, total_height * 1.1, f'{eff_val:.1e}', 
+                        ha='center', va='bottom', fontsize=8, color=color
+                    )
+
+            # bottoms = current_tops
+
+        ax.set_xlabel("Origin")
+        ax.set_ylabel("Tracks with shared clusters / Total tracks")
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(plot_labels, rotation=45, ha="right")
+        
+        ax.set_ylim(5e-6, 2.0) 
+        ax.legend()
+        ax.tick_params(axis='both', labelsize=12)
+        ax.grid(True, which="both", ls="--", linewidth=0.5)
+
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close(fig)
 
 def main():
     """Command line interface"""
