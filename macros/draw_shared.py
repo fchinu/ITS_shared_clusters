@@ -530,12 +530,19 @@ class SharedClustersAnalyzer:
         # Load and filter data
         folders = self.get_folders_to_process(simulation_dir)
         df_with = []
+        df_with_delta_rof = []
         df_without = []
         for folder in folders:
             df_with.append(pd.read_parquet(os.path.join(
                     folder,
                     "outputs",
                     "with_shared_clusters",
+                    "CheckTracksCA.parquet"
+                )))
+            df_with_delta_rof.append(pd.read_parquet(os.path.join(
+                    folder,
+                    "outputs",
+                    "with_shared_clusters_delta_rof",
                     "CheckTracksCA.parquet"
                 )))
             df_without.append(pd.read_parquet(os.path.join(
@@ -545,13 +552,16 @@ class SharedClustersAnalyzer:
                     "CheckTracksCA.parquet"
                 )))
         df_with = pd.concat(df_with, ignore_index=True)
+        df_with_delta_rof = pd.concat(df_with_delta_rof, ignore_index=True)
         df_without = pd.concat(df_without, ignore_index=True)
 
         if not all_tracks:
             df_with = df_with.query("isShared == 1")
+            df_with_delta_rof = df_with_delta_rof.query("isShared == 1")
 
         # Classify tracks
         track_data_with = self.classifier.classify_tracks(df_with)
+        track_data_with_delta_rof = self.classifier.classify_tracks(df_with_delta_rof)
         track_data_without = self.classifier.classify_tracks(df_without)
 
         # Refine doubly reco into subcategories
@@ -560,6 +570,12 @@ class SharedClustersAnalyzer:
             track_data_without[TrackType.DOUBLY_RECO]
         )
         track_data_with.update(doubly_split)
+        
+        doubly_split_delta_rof = self.classifier.classify_doubly_reco_details(
+            track_data_with_delta_rof[TrackType.DOUBLY_RECO],
+            track_data_without[TrackType.DOUBLY_RECO]
+        )
+        track_data_with_delta_rof.update(doubly_split_delta_rof)
 
         doubly_split_without = self.classifier.classify_doubly_reco_details(
             track_data_with[TrackType.DOUBLY_RECO],
@@ -570,18 +586,45 @@ class SharedClustersAnalyzer:
         # Create PDF with plots
         with PdfPages(output_file) as pdf:
             print("Generating plots with shared clusters...")
-            self._save_plots_to_pdf(pdf, track_data_with, cluster_sharing=True)
-
-            print("Generating plots without shared clusters...")
-            self._save_plots_to_pdf(pdf, track_data_without, cluster_sharing=False)
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.text(0.5, 0.5, 'With Shared Clusters', 
+                    ha='center', va='center', fontsize=12)
+            pdf.savefig(fig)
+            plt.close(fig)
+            self._save_plots_to_pdf(pdf, track_data_with, cluster_sharing=True, delta_rof=False)
 
             self._save_efficiency(pdf, track_data_with, track_data_without)
+
+            print("Generating plots with shared clusters and delta ROF...")
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.text(0.5, 0.5, 'With Shared Clusters and Delta ROF', 
+                    ha='center', va='center', fontsize=12)
+            pdf.savefig(fig)
+            plt.close(fig)
+            self._save_plots_to_pdf(pdf, track_data_with_delta_rof, cluster_sharing=True, delta_rof=True)
+            self._save_efficiency(pdf, track_data_with_delta_rof, track_data_without)
+
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.text(0.5, 0.5, 'Compare efficiency with and without delta ROF', 
+                    ha='center', va='center', fontsize=12)
+            pdf.savefig(fig)
+            plt.close(fig)
+            self._save_efficiency_comparison(pdf, track_data_with, track_data_with_delta_rof, track_data_without)
+
+            print("Generating plots without shared clusters...")
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.text(0.5, 0.5, 'Without Shared Clusters', 
+                    ha='center', va='center', fontsize=12)
+            pdf.savefig(fig)
+            plt.close(fig)
+            self._save_plots_to_pdf(pdf, track_data_without, cluster_sharing=False)
 
     def _save_plots_to_pdf(
             self,
             pdf: PdfPages,
             track_data: Dict[TrackType, pd.DataFrame],
-            cluster_sharing: bool
+            cluster_sharing: bool,
+            delta_rof: bool = False
         ):
         """Generate and save all plots to PDF"""
         # Stacked histogram by particle origin
@@ -647,94 +690,362 @@ class SharedClustersAnalyzer:
             plt.close(fig)
 
     def _save_efficiency(self, pdf, track_data_with, track_data_without):
-        data_types = list(track_data_with.keys())
-        if TrackType.DOUBLY_RECO in data_types:
-            data_types.pop(data_types.index(TrackType.DOUBLY_RECO))
-        
-        all_labels = []
-        for typ in data_types:
-            df_without = track_data_without[typ]
-            if len(df_without) > 0:
-                all_labels.extend(df_without["label"].tolist())
-
-        if not all_labels:
-            return None
-
-        plot_labels, _ = self.hist_plotter.prepare_labels(all_labels)
-        x_pos = np.arange(len(plot_labels))
-        
-        # Define markers for different track types
-        markers = ['o', 's', 'x']
-
-        track_counts = {True: {}, False: {}}
-        for shared in [True, False]:
-            data_source = track_data_with if shared else track_data_without
-            for track_type, df in data_source.items():
-                labels = df["label"].tolist() if len(df) > 0 else []
-                label_counter = Counter(labels)
-                track_counts[shared][track_type] = np.array([label_counter.get(label, 0) for label in plot_labels])
-
-        fig, ax = plt.subplots(figsize=self.hist_plotter.config.figure_size)
-        ax.set_yscale('log')
-        
-        order = [TrackType.FAKE, TrackType.DOUBLY_RECO_ONLY_WITH_SHARED, TrackType.GOOD]
-        
-        total_counts = np.zeros(len(plot_labels))
-        for t in order:
-            if t in track_counts[False]:
-                total_counts += track_counts[False][t]
-
-        safe_total = np.where(total_counts == 0, np.nan, total_counts)
-        bottoms = np.zeros(len(plot_labels))
-        legends = {
-            TrackType.FAKE: "Fake",
-            TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
-            TrackType.GOOD: "Good"
-        }
-
-        for i, track_type in enumerate(order):
-            if track_type not in track_counts[True]:
-                continue
-                
-            counts = track_counts[True][track_type]
-            efficiencies = counts/safe_total
-            # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
-
-            current_tops = bottoms + efficiencies
-            color = f"C{i}"
+        with plt.style.context('tableau-colorblind10'):
+            data_types = list(track_data_with.keys())
+            if TrackType.DOUBLY_RECO in data_types:
+                data_types.pop(data_types.index(TrackType.DOUBLY_RECO))
             
-            ax.errorbar(
-                x_pos, current_tops, 
-                xerr=0.5, 
-                fmt=markers[i], 
-                color=color,
-                markersize=5,
-                capsize=0,
-                label=legends[track_type]
-            )
+            all_labels = []
+            for typ in data_types:
+                df_without = track_data_without[typ]
+                if len(df_without) > 0:
+                    all_labels.extend(df_without["label"].tolist())
 
-            for x, eff_val, total_height in zip(x_pos, efficiencies, current_tops):
-                if eff_val > 0:
-                    ax.text(
-                        x, total_height * 1.1, f'{eff_val:.1e}', 
-                        ha='center', va='bottom', fontsize=8, color=color
+            if not all_labels:
+                return None
+
+            plot_labels, _ = self.hist_plotter.prepare_labels(all_labels)
+            x_pos = np.arange(len(plot_labels))
+            
+            # Define markers for different track types
+            markers = ['o', 'x']
+
+            track_counts = {True: {}, False: {}}
+            for shared in [True, False]:
+                data_source = track_data_with if shared else track_data_without
+                for track_type, df in data_source.items():
+                    labels = df["label"].tolist() if len(df) > 0 else []
+                    label_counter = Counter(labels)
+                    track_counts[shared][track_type] = np.array([label_counter.get(label, 0) for label in plot_labels])
+
+            fig, ax = plt.subplots(figsize=self.hist_plotter.config.figure_size)
+            ax.set_yscale('log')
+            
+            order = [TrackType.FAKE, TrackType.GOOD]
+            
+            total_counts = np.zeros(len(plot_labels))
+            for t in data_types:
+                if t in track_counts[False]:
+                    total_counts += track_counts[False][t]
+
+            safe_total = np.where(total_counts == 0, np.nan, total_counts)
+            bottoms = np.zeros(len(plot_labels))
+            legends = {
+                TrackType.FAKE: "Fake",
+                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
+                TrackType.GOOD: "Good"
+            }
+
+            for i, track_type in enumerate(order):
+                if track_type not in track_counts[True]:
+                    continue
+                    
+                counts = track_counts[True][track_type]
+                efficiencies = counts/safe_total
+                # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
+
+                current_tops = bottoms + efficiencies
+                color = f"C{i}"
+                ax.errorbar(
+                    x_pos, current_tops, 
+                    xerr=0.5, 
+                    fmt=markers[i], 
+                    color=color,
+                    markersize=5,
+                    capsize=0,
+                    label=legends[track_type]
+                )
+
+                for x, eff_val, total_height in zip(x_pos, efficiencies, current_tops):
+                    if eff_val > 0:
+                        ax.text(
+                            x, total_height * 1.1, f'{eff_val:.1e}', 
+                            ha='center', va='bottom', fontsize=8, color=color
+                        )
+
+
+            ax.set_xlabel("Origin")
+            ax.set_ylabel("Tracks with shared clusters / Total tracks")
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(plot_labels, rotation=45, ha="right")
+            
+            ax.set_ylim(5e-6, 2.0) 
+            ax.legend()
+            ax.tick_params(axis='both', labelsize=12)
+            ax.grid(True, which="both", ls="--", linewidth=0.5)
+
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            fig, ax = plt.subplots(figsize=self.hist_plotter.config.figure_size)
+            ax.set_yscale('log')
+            
+            order = [TrackType.DOUBLY_RECO_ONLY_WITH_SHARED, TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED]
+            
+            total_counts = np.zeros(len(plot_labels))
+            for t in data_types:
+                if t in track_counts[False]:
+                    total_counts += track_counts[False][t]
+
+            safe_total = np.where(total_counts == 0, np.nan, total_counts)
+            bottoms = np.zeros(len(plot_labels))
+            legends = {
+                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
+                TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: "Multiply reco also w/o shared"
+            }
+
+            for i, track_type in enumerate(order):
+                if track_type not in track_counts[True]:
+                    continue
+                    
+                counts = track_counts[True][track_type]
+                efficiencies = counts/safe_total
+                # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
+
+                current_tops = bottoms + efficiencies
+                color = f"C{4-i}"
+
+                ax.errorbar(
+                    x_pos, current_tops, 
+                    xerr=0.5, 
+                    fmt=markers[i], 
+                    color=color,
+                    markersize=5,
+                    capsize=0,
+                    label=legends[track_type]
+                )
+
+                for x, eff_val, total_height in zip(x_pos, efficiencies, current_tops):
+                    if eff_val > 0:
+                        ax.text(
+                            x, total_height * 1.1, f'{eff_val:.1e}', 
+                            ha='center', va='bottom', fontsize=8, color=color
+                        )
+
+            ax.set_xlabel("Origin")
+            ax.set_ylabel("Tracks with shared clusters / Total tracks")
+            ax.set_xticks(x_pos)
+            ax.set_xticklabels(plot_labels, rotation=45, ha="right")
+            
+            ax.set_ylim(5e-6, 2.0) 
+            ax.legend()
+            ax.tick_params(axis='both', labelsize=12)
+            ax.grid(True, which="both", ls="--", linewidth=0.5)
+
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    def _save_efficiency_comparison(self, pdf, track_data_with, track_data_with_delta_rof, track_data_without):
+        with plt.style.context('tableau-colorblind10'):
+            data_types = list(track_data_with.keys())
+            if TrackType.DOUBLY_RECO in data_types:
+                data_types.pop(data_types.index(TrackType.DOUBLY_RECO))
+            
+            all_labels = []
+            for typ in data_types:
+                df_without = track_data_without[typ]
+                if len(df_without) > 0:
+                    all_labels.extend(df_without["label"].tolist())
+
+            if not all_labels:
+                return None
+
+            plot_labels, _ = self.hist_plotter.prepare_labels(all_labels)
+            x_pos = np.arange(len(plot_labels))
+            
+            # Define markers for different track types
+            markers = ['o', 'x', 'd', 'P']
+
+            track_counts = {"with_shared": {}, "with_shared_delta_rof": {}, "without_shared": {}}
+            for data_type in ["with_shared", "with_shared_delta_rof", "without_shared"]:
+                if data_type == "with_shared":
+                    data_source = track_data_with
+                elif data_type == "with_shared_delta_rof":
+                    data_source = track_data_with_delta_rof
+                else:
+                    data_source = track_data_without
+
+                for track_type, df in data_source.items():
+                    labels = df["label"].tolist() if len(df) > 0 else []
+                    label_counter = Counter(labels)
+                    track_counts[data_type][track_type] = np.array([label_counter.get(label, 0) for label in plot_labels])
+
+            fig, (ax, ax_ratio) = plt.subplots(
+                2, 1, 
+                figsize=self.hist_plotter.config.figure_size, 
+                sharex=True, 
+                gridspec_kw={'height_ratios': [3, 1]}
+            )
+            
+            ax.set_yscale('log')
+            
+            order = [TrackType.FAKE, TrackType.GOOD]
+            
+            total_counts = np.zeros(len(plot_labels))
+            for t in data_types:
+                if t in track_counts["without_shared"]:
+                    total_counts += track_counts["without_shared"][t]
+
+            safe_total = np.where(total_counts == 0, np.nan, total_counts)
+            bottoms = np.zeros(len(plot_labels))
+            legends = {
+                TrackType.FAKE: "Fake",
+                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
+                TrackType.GOOD: "Good"
+            }
+
+            for i, track_type in enumerate(order):
+                if track_type not in track_counts["with_shared"]:
+                    continue
+                    
+                counts = track_counts["with_shared"][track_type]
+                efficiencies = counts/safe_total
+                    
+                counts_delta_rof = track_counts["with_shared_delta_rof"][track_type]
+                efficiencies_delta_rof = counts_delta_rof/safe_total
+                # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
+
+                current_tops = bottoms + efficiencies
+                color = f"C{i}"
+                with plt.style.context('tableau-colorblind10'):
+                    ax.errorbar(
+                        x_pos, current_tops, 
+                        xerr=0.5, 
+                        fmt=markers[i], 
+                        color=f"C{i}",
+                        markersize=5,
+                        capsize=0,
+                        label=f"{legends[track_type]} (no delta ROF)"
                     )
 
-            # bottoms = current_tops
+                    current_tops = bottoms + efficiencies_delta_rof
+                    
+                    ax.errorbar(
+                        x_pos, current_tops, 
+                        xerr=0.5, 
+                        fmt=markers[i+2], 
+                        color=f"C{4-i}",
+                        markersize=5,
+                        capsize=0,
+                        label=f"{legends[track_type]} (delta ROF)"
+                    )
 
-        ax.set_xlabel("Origin")
-        ax.set_ylabel("Tracks with shared clusters / Total tracks")
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(plot_labels, rotation=45, ha="right")
-        
-        ax.set_ylim(5e-6, 2.0) 
-        ax.legend()
-        ax.tick_params(axis='both', labelsize=12)
-        ax.grid(True, which="both", ls="--", linewidth=0.5)
+                    ratio = np.where(efficiencies != 0, efficiencies_delta_rof / efficiencies, np.nan)
+                    
+                    ax_ratio.errorbar(
+                        x_pos, ratio, 
+                        xerr=0.5, fmt=markers[i+2], color=f"C{4-i}",
+                        markersize=4, capsize=0, label=f"{legends[track_type]} ratio"
+                    )
 
-        plt.tight_layout()
-        pdf.savefig(fig)
-        plt.close(fig)
+            ax.set_ylabel("Tracks with shared clusters / Total tracks")
+            ax.set_xticks(x_pos)
+            
+            ax_ratio.set_xlabel("Origin")
+            ax_ratio.set_ylabel("Ratio\n(delta ROF/no delta ROF)")
+            ax_ratio.axhline(1.0, color='black', lw=1, ls='-')
+            ax_ratio.set_ylim(0, 4)
+            ax_ratio.legend()
+            ax_ratio.grid(True, which="both", ls="--", alpha=0.5)
+            ax_ratio.set_xticklabels(plot_labels, rotation=45, ha="right")
+
+            ax.set_ylim(5e-6, 2.0) 
+            ax.legend()
+            ax.tick_params(axis='both', labelsize=12)
+            ax.grid(True, which="both", ls="--", linewidth=0.5)
+
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            fig, (ax, ax_ratio) = plt.subplots(
+                2, 1, 
+                figsize=self.hist_plotter.config.figure_size, 
+                sharex=True, 
+                gridspec_kw={'height_ratios': [3, 1]}
+            )
+            
+            ax.set_yscale('log')
+            
+            order = [TrackType.DOUBLY_RECO_ONLY_WITH_SHARED, TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED]
+            
+            total_counts = np.zeros(len(plot_labels))
+            for t in data_types:
+                if t in track_counts["without_shared"]:
+                    total_counts += track_counts["without_shared"][t]
+
+            safe_total = np.where(total_counts == 0, np.nan, total_counts)
+            bottoms = np.zeros(len(plot_labels))
+            legends = {
+                TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: "Multiply reco only w/ shared",
+                TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: "Multiply reco also w/o shared"
+            }
+
+            for i, track_type in enumerate(order):
+                if track_type not in track_counts["with_shared"]:
+                    continue
+                    
+                counts = track_counts["with_shared"][track_type]
+                efficiencies = counts/safe_total
+                    
+                counts_delta_rof = track_counts["with_shared_delta_rof"][track_type]
+                efficiencies_delta_rof = counts_delta_rof/safe_total
+                # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
+
+                current_tops = bottoms + efficiencies
+                color = f"C{i}"
+                
+                with plt.style.context('tableau-colorblind10'):
+                    ax.errorbar(
+                        x_pos, current_tops, 
+                        xerr=0.5, 
+                        fmt=markers[i], 
+                        color=f"C{i}",
+                        markersize=5,
+                        capsize=0,
+                        label=f"{legends[track_type]} (no delta ROF)"
+                    )
+
+                    current_tops = bottoms + efficiencies_delta_rof
+                    ax.errorbar(
+                        x_pos, current_tops, 
+                        xerr=0.5, 
+                        fmt=markers[i+2], 
+                        color=f"C{4-i}",
+                        markersize=5,
+                        capsize=0,
+                        label=f"{legends[track_type]} (delta ROF)"
+                    )
+
+                    ratio = np.where(efficiencies != 0, efficiencies_delta_rof / efficiencies, np.nan)
+                    ax_ratio.errorbar(
+                        x_pos, ratio, 
+                        xerr=0.5, fmt=markers[i+2], color=f"C{4-i}",
+                        markersize=4, capsize=0, label=f"{legends[track_type]} ratio"
+                    )
+
+            ax.set_ylabel("Tracks with shared clusters / Total tracks")
+            ax.set_xticks(x_pos)
+            
+            ax_ratio.set_xlabel("Origin")
+            ax_ratio.set_ylabel("Ratio\n(delta ROF/no delta ROF)")
+            ax_ratio.axhline(1.0, color='black', lw=1, ls='-') # Reference line at 1
+            ax_ratio.set_ylim(0, 4)
+            ax_ratio.legend()
+            ax_ratio.grid(True, which="both", ls="--", alpha=0.5)
+            ax_ratio.set_xticklabels(plot_labels, rotation=45, ha="right")
+            
+            ax.set_ylim(5e-6, 2.0) 
+            ax.legend()
+            ax.tick_params(axis='both', labelsize=12)
+            ax.grid(True, which="both", ls="--", linewidth=0.5)
+
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
 
 def main():
     """Command line interface"""
