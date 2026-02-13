@@ -27,6 +27,7 @@ class Runner():
 
         self.base_dir = Path("simulations") / self.base_name
         self.sim_dir = self.base_dir / "without_shared_clusters"
+        self.delta_rof_dir = self.base_dir / "without_shared_clusters_delta_rof"
         self.w_shared_cl_dir = self.base_dir / "with_shared_clusters"
         self.w_shared_cl_delta_rof_dir = self.base_dir / "with_shared_clusters_delta_rof"
         self.output_dir = self.base_dir / "outputs"
@@ -50,12 +51,15 @@ class Runner():
         # Create simulation directory
         self.sim_dir.mkdir(parents=True, exist_ok=True)
         self.w_shared_cl_dir.mkdir(parents=True, exist_ok=True)
+        self.delta_rof_dir.mkdir(parents=True, exist_ok=True)
         self.w_shared_cl_delta_rof_dir.mkdir(parents=True, exist_ok=True)
         (self.output_dir / self.sim_dir.name).mkdir(parents=True, exist_ok=True)
         (self.output_dir / self.w_shared_cl_dir.name).mkdir(parents=True, exist_ok=True)
+        (self.output_dir / self.delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
         (self.output_dir / self.w_shared_cl_delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
         (self.partial_output_dir / self.sim_dir.name).mkdir(parents=True, exist_ok=True)
         (self.partial_output_dir / self.w_shared_cl_dir.name).mkdir(parents=True, exist_ok=True)
+        (self.partial_output_dir / self.delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
         (self.partial_output_dir / self.w_shared_cl_delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
         
         iterations_to_run = self.run_iterations if self.run_iterations is not None else range(self.iterations)
@@ -64,6 +68,7 @@ class Runner():
             iter_dir.mkdir(parents=True, exist_ok=True)
             (self.partial_output_dir / self.sim_dir.name / str(i)).mkdir(parents=True, exist_ok=True)
             (self.partial_output_dir / self.w_shared_cl_dir.name / str(i)).mkdir(parents=True, exist_ok=True)
+            (self.partial_output_dir / self.delta_rof_dir.name / str(i)).mkdir(parents=True, exist_ok=True)
             (self.partial_output_dir / self.w_shared_cl_delta_rof_dir.name / str(i)).mkdir(parents=True, exist_ok=True)
 
         # Create source file with environment variables for reproducibility
@@ -108,10 +113,12 @@ class Runner():
                     self.run_simulation(i, self.start_splitid + i, rerun_from=rerun_from)
                 if start_idx <= 1:
                     self.copy_simulations(self.w_shared_cl_dir, i)
+                    self.copy_simulations(self.delta_rof_dir, i)
                     self.copy_simulations(self.w_shared_cl_delta_rof_dir, i)
                 if start_idx <= 2:
-                    self.run_its_reco_with_shared_clusters(i)
-                    self.run_its_reco_with_shared_clusters_delta_rof(i)
+                    self.run_its_reco(i, shared_cl=True, delta_rof=False)
+                    self.run_its_reco(i, shared_cl=False, delta_rof=True)
+                    self.run_its_reco(i, shared_cl=True, delta_rof=True)
                 # if start_idx <= 3:
                 #     self.extend_with_track_selection(i)
                 if start_idx <= 4:
@@ -274,8 +281,13 @@ class Runner():
                     return False
         return True
 
-    def run_its_reco_with_shared_clusters(self, iteration: int):
-        """Run ITS reconstruction with shared clusters."""
+    def run_its_reco(self, iteration: int, shared_cl: bool = True, delta_rof: bool = False):
+        """Run ITS reconstruction"""
+
+        if not (shared_cl or delta_rof):
+            self.logger.info("Please specify at least one of shared_cl or delta_rof to True for running ITS reconstruction.")
+            sys.exit()
+
         o2dpg_root = os.environ.get("O2DPG_ROOT")
         o2_root = os.environ.get("O2_ROOT")
 
@@ -283,9 +295,23 @@ class Runner():
             self.logger.error("Error: O2DPG_ROOT and O2_ROOT must be set in the environment.")
             return False
 
-        self.logger.info("=== Running ITS Reconstruction with Shared Clusters ===")
+        log_text = "=== Running ITS Reconstruction "
+        if shared_cl:
+            log_text += "with Shared Clusters "
+        if delta_rof:
+            log_text += "with deltaRof parameters "
+        log_text += "==="
+        self.logger.info(log_text)
 
-        dir = self.w_shared_cl_dir / str(iteration)
+        dir = None
+        if shared_cl and delta_rof:
+            dir = self.w_shared_cl_delta_rof_dir / str(iteration)
+        elif shared_cl:
+            dir = self.w_shared_cl_dir / str(iteration)
+        elif delta_rof:
+            dir = self.delta_rof_dir / str(iteration)
+        else:
+            dir = self.sim_dir / str(iteration)
 
         latest_mod_time = self._get_last_modified_time(dir)
 
@@ -296,10 +322,16 @@ class Runner():
         for task in workflow["stages"]:
             if "itsreco" in task["name"]:
                 # add
-                new_param = "ITSCATrackerParam.allowSharingFirstCluster=true"
+                new_params = []
+                if shared_cl:
+                    new_params.append("ITSCATrackerParam.allowSharingFirstCluster=true")
+                if delta_rof:
+                    new_params.append("ITSCATrackerParam.deltaRof=1")
+                    new_params.append("ITSVertexerParam.deltaRof=1")
+                new_param = ";".join(new_params)
                 parts = task["cmd"].split('\"')
-                # parts[0] is the start, parts[1] is the content of configKeyValues
 
+                # parts[0] is the start, parts[1] is the content of configKeyValues
                 if new_param not in parts[1]:
                     # Add a semicolon if the string isn't empty
                     separator = ";" if parts[1] and not parts[1].endswith(";") else ""
@@ -307,6 +339,7 @@ class Runner():
 
                     # Reconstruct the command
                     task["cmd"] = '\"'.join(parts)
+
         with open(workflow_file, "w") as f:
             json.dump(workflow, f, indent=4)
 
@@ -324,7 +357,13 @@ class Runner():
             self.logger.info("Running ITS reconstruction with shared clusters...")
             with open(dir / "its_reco_shared_clusters.log", "w") as log_file:
                 subprocess.run(runner_cmd, cwd=dir, check=True, stdout=log_file, stderr=log_file)
-            self.logger.info(f"ITS reconstruction with shared clusters completed successfully in: {dir}")
+            log_text = "=== ITS Reconstruction "
+            if shared_cl:
+                log_text += "with Shared Clusters "
+            if delta_rof:
+                log_text += "with deltaRof parameters "
+            log_text += f"completed successfully in: {dir} ==="
+            self.logger.info(log_text)
         except subprocess.CalledProcessError as e:
             self.logger.error(f"ITS reconstruction failed with exit code {e.returncode}")
             return False
@@ -342,74 +381,6 @@ class Runner():
 
         return self._link_missing_files(self.sim_dir / str(iteration), dir)
 
-    def run_its_reco_with_shared_clusters_delta_rof(self, iteration: int):
-        """Run ITS reconstruction with shared clusters."""
-        o2dpg_root = os.environ.get("O2DPG_ROOT")
-        o2_root = os.environ.get("O2_ROOT")
-
-        if not o2dpg_root or not o2_root:
-            self.logger.error("Error: O2DPG_ROOT and O2_ROOT must be set in the environment.")
-            return False
-
-        self.logger.info("=== Running ITS Reconstruction with Shared Clusters ===")
-
-        dir = self.w_shared_cl_delta_rof_dir / str(iteration)
-
-        latest_mod_time = self._get_last_modified_time(dir)
-
-        # Modify workflow to enable shared clusters
-        workflow_file = dir / "workflow.json"
-        with open(workflow_file, "r") as f:
-            workflow = json.load(f)
-        for task in workflow["stages"]:
-            if "itsreco" in task["name"]:
-                # add
-                new_param = "ITSCATrackerParam.allowSharingFirstCluster=true;ITSCATrackerParam.deltaRof=1;ITSVertexerParam.deltaRof=1"
-                parts = task["cmd"].split('\"')
-                # parts[0] is the start, parts[1] is the content of configKeyValues
-
-                if new_param not in parts[1]:
-                    # Add a semicolon if the string isn't empty
-                    separator = ";" if parts[1] and not parts[1].endswith(";") else ""
-                    parts[1] = f"{parts[1]}{separator}{new_param}"
-
-                    # Reconstruct the command
-                    task["cmd"] = '\"'.join(parts)
-        with open(workflow_file, "w") as f:
-            json.dump(workflow, f, indent=4)
-
-        # Construct Workflow Execution Command
-        runner_cmd = [
-            f"{o2dpg_root}/MC/bin/o2_dpg_workflow_runner.py",
-            "-f", "workflow.json",
-            "-tt", "itsreco",
-            "--cpu-limit", "32",
-            "--rerun-from", "itsreco_*"
-        ]
-
-        # Run ITS Reconstruction with Shared Clusters
-        try:
-            self.logger.info("Running ITS reconstruction with shared clusters and deltaRof parameters...")
-            with open(dir / "its_reco_shared_clusters_delta_rof.log", "w") as log_file:
-                subprocess.run(runner_cmd, cwd=dir, check=True, stdout=log_file, stderr=log_file)
-            self.logger.info(f"ITS reconstruction with shared clusters and deltaRof parameters completed successfully in: {dir}")
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"ITS reconstruction failed with exit code {e.returncode}")
-            return False
-
-        # Remove old files
-        for root, _, files in os.walk(dir):
-            for file in files:
-                file_path = Path(root) / file
-                if file_path.stat(follow_symlinks=False).st_mtime <= latest_mod_time:
-                    try:
-                        file_path.unlink()
-                    except Exception as e:
-                        self.logger.error(f"Failed to remove file {file_path}: {e}")
-                        return False
-
-        return self._link_missing_files(self.sim_dir / str(iteration), dir)
-    
     def extend_with_track_selection(self, iteration: int):
         """Extend AOD with track selection information using native Python sub-processes."""
         for dir_sim in self._get_all_tf_dirs(self.sim_dir / str(iteration)) + self._get_all_tf_dirs(self.w_shared_cl_dir / str(iteration)):
