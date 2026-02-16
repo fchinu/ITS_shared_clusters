@@ -5,30 +5,59 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.ticker as ticker
 
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 def draw_phi_distribution(df_all, df_doubly, df_not_doubly):
-    """Draw the phi distribution of tracks."""
-    fig = plt.figure(figsize=(10, 6))
-    plt.hist(df_all["phi"].explode(), bins=100, alpha=0.5, log=True, label="All Tracks")
-    plt.hist(
-        df_not_doubly["phi"].explode(),
+    """Draw the phi distribution with pi-based axis labels."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.hist(
+        df_not_doubly.query("isShared")["phi"].explode(),
         bins=100,
         alpha=0.7,
         log=True,
-        label="Not Doubly Reco Tracks",
+        label="Not Multiply Reco Particles",
     )
-    plt.hist(
-        df_doubly["phi"].explode(),
+    ax.hist(
+        df_doubly.query("isShared")["phi"].explode(),
         bins=100,
         alpha=0.9,
         log=True,
-        label="Doubly Reco Tracks",
+        label="Multiply Reco Particles",
     )
-    plt.xlabel("Phi (radians)")
-    plt.ylabel("Counts")
-    plt.title("Distribution of Track Phi")
-    plt.legend()
+
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(np.pi / 6))
+
+    # Define a formatter to turn the numbers into pretty strings
+    def format_func(value, tick_number):
+        # Calculate how many quarters of pi this is
+        n = int(round(6 * value / np.pi))
+        if n == 0:
+            return "0"
+        elif n == 6:
+            return r"$\pi$"
+        elif n == -6:
+            return r"$-\pi$"
+        elif n % 6 == 0:
+            return fr"${n//6}\pi$"
+        elif n % 3 == 0:
+            if abs(n // 3) == 1:
+                return r"$\pi/2$"
+            else:
+                return fr"${n//3}\pi/2$"
+
+        return fr"${n}/6\pi$"
+
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_func))
+
+    ax.set_xlabel(r"$\phi$ (radians)")
+    ax.set_ylabel("Counts")
+    ax.set_title("Distribution of Track Phi")
+    ax.legend()
 
     return fig
 
@@ -222,9 +251,9 @@ def study_doubly_reco(input_parquet, output_file):
         pdf.savefig(fig_phi)
         plt.close(fig_phi)
 
-        fig_dr_dphi_dz = draw_dr_dphi_dz(df_doubly_reco, df_not_doubly_reco)
-        pdf.savefig(fig_dr_dphi_dz)
-        plt.close(fig_dr_dphi_dz)
+        # fig_dr_dphi_dz = draw_dr_dphi_dz(df_doubly_reco, df_not_doubly_reco)
+        # pdf.savefig(fig_dr_dphi_dz)
+        # plt.close(fig_dr_dphi_dz)
 
 
 if __name__ == "__main__":
