@@ -107,7 +107,6 @@ struct ParticleRecoInfo {
   bool isShared = 0u;
   int event;
   int mcTrackID;
-  o2::MCTrack mcTrack;
 };
 
 #pragma link C++ class ParticleInfo + ;
