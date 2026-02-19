@@ -1,13 +1,12 @@
 """Convert CheckTracksCA output ROOT file to Parquet format for easier analysis."""
 
 import argparse
-import glob
 import os
 import sys
+from pathlib import Path
 import uproot
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 sys.path.append(".")
 from utils.data_matcher import (  # pylint: disable=wrong-import-position, import-error  # noqa: E402
@@ -27,6 +26,10 @@ MC_COLS_TO_ADD = [
     "isReco",
     "isFake",
     "isPrimary",
+    "mcTrack.mStartVertexCoordinatesX",
+    "mcTrack.mStartVertexCoordinatesY",
+    "mcTrack.mStartVertexCoordinatesZ",
+    "mcTrack.mStartVertexCoordinatesT",
 ]
 
 PDG_LABELS = {
@@ -108,7 +111,7 @@ def main(input_folder, output_file):  # pylint: disable=too-many-locals
     for iteration_dir in input_folder.iterdir():
         if not iteration_dir.is_dir():
             continue
-        
+
         files = list(iteration_dir.glob("*.root"))
         tfs = [int(f.name.split("tf")[-1].split(".root")[0]) for f in files]
 
@@ -123,6 +126,8 @@ def main(input_folder, output_file):  # pylint: disable=too-many-locals
             base_dir = input_folder.parent.parent.parent
             iteration = iteration_dir.name
             variant = input_folder.name
+            dfs[-1]["tf"] = tf
+            dfs[-1]["iteration"] = iteration
 
             ao2d_file = base_dir / variant / iteration / f"tf{tf}" / "AO2D.root"
             if not os.path.exists(ao2d_file):
@@ -132,8 +137,7 @@ def main(input_folder, output_file):  # pylint: disable=too-many-locals
             )
             dfs[-1] = pd.concat([dfs[-1], get_df_matching(outfile_root)], axis=1)
             os.remove(outfile_root)
-            dfs[-1]["tf"] = tf
-            dfs[-1]["iteration"] = iteration
+
 
     df = pd.concat(dfs, ignore_index=True)
     get_cylindrical(df)
