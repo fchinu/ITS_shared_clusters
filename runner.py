@@ -61,7 +61,7 @@ class Runner():
         (self.partial_output_dir / self.w_shared_cl_dir.name).mkdir(parents=True, exist_ok=True)
         (self.partial_output_dir / self.delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
         (self.partial_output_dir / self.w_shared_cl_delta_rof_dir.name).mkdir(parents=True, exist_ok=True)
-        
+
         iterations_to_run = self.run_iterations if self.run_iterations is not None else range(self.iterations)
         for i in iterations_to_run:
             iter_dir = self.sim_dir / str(i)
@@ -90,7 +90,7 @@ class Runner():
         stages = ["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"]
         start_idx = stages.index(self.start_from) if not self.rerun_failed else 0
 
-        iterations_to_run = self.run_iterations if self.run_iterations is not None else range(1, self.iterations)
+        iterations_to_run = self.run_iterations if self.run_iterations is not None else range(self.iterations)
         for i in iterations_to_run:
             rerun_from = None
             if self.rerun_failed:
@@ -119,8 +119,8 @@ class Runner():
                     self.run_its_reco(i, shared_cl=True, delta_rof=False)
                     self.run_its_reco(i, shared_cl=False, delta_rof=True)
                     self.run_its_reco(i, shared_cl=True, delta_rof=True)
-                # if start_idx <= 3:
-                #     self.extend_with_track_selection(i)
+                if start_idx <= 3:
+                    self.extend_with_track_selection(i)
                 if start_idx <= 4:
                     self.run_checktracksca(i)  # TODO: parallelize
             except Exception as e:
@@ -143,7 +143,7 @@ class Runner():
         self,
         iteration: int,
         seed_value,
-        rerun_from=None 
+        rerun_from=None
     ):
         """
         Executes the O2DPG simulation workflow (MC->RECO->AOD).
@@ -161,7 +161,7 @@ class Runner():
         except subprocess.CalledProcessError as e:
             self.logger.error(f"Could not source O2 jobutils.sh: {e}")
             return False
-        
+
         dir = self.sim_dir / str(iteration)
 
         self.logger.info("=== Simulation Parameters ===")
@@ -266,13 +266,13 @@ class Runner():
         for item in source_path.rglob("*"):
             if item.is_dir():
                 continue
-            
+
             relative_path = item.relative_to(source_path)
             link_destination = target_path / relative_path
 
             if not link_destination.exists():
                 try:
-                    # Create the parent directory structure (e.g., tf1/) 
+                    # Create the parent directory structure (e.g., tf1/)
                     # as real folders so we can put links inside them.
                     link_destination.parent.mkdir(parents=True, exist_ok=True)
                     link_destination.symlink_to(item)
@@ -347,7 +347,7 @@ class Runner():
         runner_cmd = [
             f"{o2dpg_root}/MC/bin/o2_dpg_workflow_runner.py",
             "-f", "workflow.json",
-            "-tt", "itsreco",
+            "-tt", "aod",
             "--cpu-limit", "32",
             "--rerun-from", "itsreco_*"
         ]
@@ -383,10 +383,15 @@ class Runner():
 
     def extend_with_track_selection(self, iteration: int):
         """Extend AOD with track selection information using native Python sub-processes."""
-        for dir_sim in self._get_all_tf_dirs(self.sim_dir / str(iteration)) + self._get_all_tf_dirs(self.w_shared_cl_dir / str(iteration)):
+        dirs = [self.sim_dir, self.w_shared_cl_dir, self.delta_rof_dir, self.w_shared_cl_delta_rof_dir]
+        dirs = [self._get_all_tf_dirs(dir / str(iteration)) for dir in dirs]
+        all_dirs = []
+        for d in dirs:
+            all_dirs.extend(d)
+        for dir_sim in all_dirs:
             ao2d_root = "AO2D.root"
             ao2d_old = "AO2D_old.root"
-            
+
             self.logger.info(f"Processing track selection in: {dir_sim}")
 
             if (dir_sim / ao2d_root).exists() and not (dir_sim / ao2d_old).exists():
@@ -396,9 +401,9 @@ class Runner():
             output_director_path = Path(__file__).parent / "configs" / "OutputDirector.json"
             log_path = dir_sim / "log_track_selection.txt"
             config_param = f"json://{str(config_path)}"
-            
+
             common_args = f"-b --configuration {config_param}"
-            
+
             cmd = f"""o2-analysis-propagationservice {common_args} | \
             o2-analysis-event-selection-service {common_args} | \
             o2-analysis-trackselection {common_args} \
@@ -414,7 +419,7 @@ class Runner():
                 # Merge results with hadd
                 merged_file = "AO2D_with_tracksel.root"
                 hadd_cmd = ["hadd", "-f", str(merged_file), str(ao2d_old), str(ao2d_root)]
-                
+
                 self.logger.info("Merging AOD files...")
                 subprocess.run(hadd_cmd, check=True, cwd=dir_sim)
 
@@ -422,7 +427,6 @@ class Runner():
                 (dir_sim / "AnalysisResults.root").unlink(missing_ok=True)
 
                 self.logger.info("Track selection extension completed successfully.")
-                return True
 
             except subprocess.CalledProcessError as e:
                 self.logger.error(f"Command failed during execution: {e}")
@@ -430,10 +434,11 @@ class Runner():
             except Exception as e:
                 self.logger.error(f"An unexpected error occurred: {e}")
                 return False
+        return True
 
     def run_checktracksca(self, iteration: int):
         """Run checkTrackSca on the AOD files."""
-        for dir in (self.sim_dir, self.w_shared_cl_dir):
+        for dir in [self.sim_dir, self.w_shared_cl_dir, self.w_shared_cl_delta_rof_dir, self.delta_rof_dir]:
             for dir_sim in self._get_all_tf_dirs(dir / str(iteration)):
                 tf = dir_sim.name.split("tf")[-1]
                 ao2d_root = dir_sim / "AO2D.root"
@@ -471,7 +476,7 @@ class Runner():
                     return False
 
         return True
-    
+
     def preprocess(self):
         """
         Python version of the bash preprocess function.
@@ -486,7 +491,7 @@ class Runner():
         env.pop("PYTHONHOME", None)
         env.pop("PYTHONPATH", None)
 
-        for dir in (self.sim_dir, self.w_shared_cl_dir):
+        for dir in [self.sim_dir, self.w_shared_cl_dir, self.w_shared_cl_delta_rof_dir, self.delta_rof_dir]:
             input_subdir = self.partial_output_dir / dir.name
             output_file = self.output_dir / dir.name / f"CheckTracksCA.parquet"
 
@@ -498,7 +503,7 @@ class Runner():
                     text=True
                 )
             except subprocess.CalledProcessError as e:
-                self.logger.error(f"Failed to move preprocess files in {input_subdir}: {e}")
+                self.logger.error(f"Failed to run preprocess.py in {input_subdir}: {e}")
                 return False
 
         return True
@@ -517,7 +522,7 @@ class Runner():
         env.pop("PYTHONHOME", None)
         env.pop("PYTHONPATH", None)
 
-        output_file = self.output_dir / "analysis_output.pdf"
+        output_file = self.output_dir / "analysis_output_delta_rof.pdf"
 
         try:
             result = subprocess.run(
@@ -562,8 +567,8 @@ if __name__ == "__main__":
                         help=f"Is pp collision (Current Env: {is_pp})")
     parser.add_argument("--low-field", type=int, default=int(low_field),
                         help=f"Low magnetic field (Current Env: {low_field})")
-    parser.add_argument("--start-from", type=str, 
-                        choices=["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"], 
+    parser.add_argument("--start-from", type=str,
+                        choices=["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"],
                         default="reco_shared",
                         help="Stage to start from: sim, copy, reco_shared, tracksel, check, preprocess, or analysis")
     parser.add_argument("--rerun-failed", action="store_true",
