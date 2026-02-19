@@ -37,7 +37,7 @@ class PlotConfig:
     bar_width: float = 1.0
     alpha: float = 0.7
     edge_color: str = "black"
-    rotation: int = 45
+    rotation: int = 90
     text_color: str = "white"
     font_weight: str = "bold"
 
@@ -73,51 +73,6 @@ class TrackClassifier:
             TrackType.DOUBLY_RECO: doubly_reco
         }
 
-    # @staticmethod
-    # def classify_doubly_reco_details(
-    #     df_doubly_with: pd.DataFrame,
-    #     df_doubly_without: pd.DataFrame
-    # ) -> Dict[TrackType, pd.DataFrame]:
-    #     """
-    #     Split doubly reconstructed tracks into:
-    #     - also without sharing
-    #     - only with sharing
-
-    #     Args:
-    #         df_doubly_with (pd.DataFrame): Doubly reco tracks with shared clusters
-    #         df_doubly_without (pd.DataFrame): Doubly reco tracks without shared clusters
-    #     Returns:
-    #         Dict[TrackType, pd.DataFrame]: Dictionary with split doubly reco track dataframes
-    #     """
-    #     dfs_with = df_doubly_with.groupby(["tf", "iteration"])
-    #     dfs_without = df_doubly_without.groupby(["tf", "iteration"])
-
-    #     also_without = []
-    #     only_with = []
-
-    #     for (tf, iteration), df_with in dfs_with:
-    #         df_without = dfs_without.get_group((tf, iteration)) if (tf, iteration) in dfs_without.groups else pd.DataFrame(columns=df_with.columns)
-
-    #         ids_with = set(df_with["mcTrackID"])
-    #         ids_without = set(df_without["mcTrackID"])
-
-    #         # Tracks that are doubly reco in both cases (intersection)
-    #         ids_also_without = ids_with.intersection(ids_without)
-    #         also_without.append(df_with[df_with["mcTrackID"].isin(ids_also_without)])
-
-    #         # Tracks that are doubly reco only due to sharing (difference)
-    #         ids_only_with = ids_with - ids_without
-    #         only_with.append(df_with[df_with["mcTrackID"].isin(ids_only_with)])
-
-    #     also_without = pd.concat(also_without, ignore_index=True)
-    #     only_with = pd.concat(only_with, ignore_index=True)
-    #     print(f"Found {len(only_with)} doubly reconstructed tracks only due to shared clusters.")
-
-    #     return {
-    #         TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: also_without,
-    #         TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: only_with,
-    #     }
-
     @staticmethod
     def classify_doubly_reco_details(
         df_doubly_with: pd.DataFrame,
@@ -134,23 +89,68 @@ class TrackClassifier:
         Returns:
             Dict[TrackType, pd.DataFrame]: Dictionary with split doubly reco track dataframes
         """
-        ids_with = set(df_doubly_with["mcTrackID"])
-        ids_without = set(df_doubly_without["mcTrackID"])
+        dfs_with = df_doubly_with.groupby(["tf", "iteration"])
+        dfs_without = df_doubly_without.groupby(["tf", "iteration"])
 
-        # Tracks that are doubly reco in both cases (intersection)
-        ids_also_without = ids_with.intersection(ids_without)
-        also_without = df_doubly_with[df_doubly_with["mcTrackID"].isin(ids_also_without)]
+        also_without = []
+        only_with = []
 
-        # Tracks that are doubly reco only due to sharing (difference)
-        ids_only_with = ids_with - ids_without
-        only_with = df_doubly_with[df_doubly_with["mcTrackID"].isin(ids_only_with)]
+        for (tf, iteration), df_with in dfs_with:
+            df_without = dfs_without.get_group((tf, iteration)) if (tf, iteration) in dfs_without.groups else pd.DataFrame(columns=df_with.columns)
 
+            ids_with = set(df_with["mcTrackID"])
+            ids_without = set(df_without["mcTrackID"])
+
+            # Tracks that are doubly reco in both cases (intersection)
+            ids_also_without = ids_with.intersection(ids_without)
+            also_without.append(df_with[df_with["mcTrackID"].isin(ids_also_without)])
+
+            # Tracks that are doubly reco only due to sharing (difference)
+            ids_only_with = ids_with - ids_without
+            only_with.append(df_with[df_with["mcTrackID"].isin(ids_only_with)])
+
+        also_without = pd.concat(also_without, ignore_index=True)
+        only_with = pd.concat(only_with, ignore_index=True)
         print(f"Found {len(only_with)} doubly reconstructed tracks only due to shared clusters.")
 
         return {
             TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: also_without,
             TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: only_with,
         }
+
+    # @staticmethod
+    # def classify_doubly_reco_details(
+    #     df_doubly_with: pd.DataFrame,
+    #     df_doubly_without: pd.DataFrame
+    # ) -> Dict[TrackType, pd.DataFrame]:
+    #     """
+    #     Split doubly reconstructed tracks into:
+    #     - also without sharing
+    #     - only with sharing
+
+    #     Args:
+    #         df_doubly_with (pd.DataFrame): Doubly reco tracks with shared clusters
+    #         df_doubly_without (pd.DataFrame): Doubly reco tracks without shared clusters
+    #     Returns:
+    #         Dict[TrackType, pd.DataFrame]: Dictionary with split doubly reco track dataframes
+    #     """
+    #     ids_with = set(df_doubly_with["mcTrackID"])
+    #     ids_without = set(df_doubly_without["mcTrackID"])
+
+    #     # Tracks that are doubly reco in both cases (intersection)
+    #     ids_also_without = ids_with.intersection(ids_without)
+    #     also_without = df_doubly_with[df_doubly_with["mcTrackID"].isin(ids_also_without)]
+
+    #     # Tracks that are doubly reco only due to sharing (difference)
+    #     ids_only_with = ids_with - ids_without
+    #     only_with = df_doubly_with[df_doubly_with["mcTrackID"].isin(ids_only_with)]
+
+    #     print(f"Found {len(only_with)} doubly reconstructed tracks only due to shared clusters.")
+
+    #     return {
+    #         TrackType.DOUBLY_RECO_ALSO_WITHOUT_SHARED: also_without,
+    #         TrackType.DOUBLY_RECO_ONLY_WITH_SHARED: only_with,
+    #     }
 
 
 class HistogramPlotter:
@@ -514,7 +514,7 @@ class Histogram2DPlotter:
         """Set consistent ticks across all subplots"""
         for ax in axes.flatten():
             ax.set_xticks(np.arange(len(unique_labels)) + 0.5)
-            ax.set_xticklabels(unique_labels, rotation=45, ha="right")
+            ax.set_xticklabels(unique_labels, rotation=90, ha="right")
             ax.set_yticks(np.arange(7) + 0.5)
             ax.set_yticklabels(range(7))
 
@@ -813,7 +813,7 @@ class SharedClustersAnalyzer:
         ax.set_xlabel("Origin", fontsize=14)
         ax.set_ylabel("Tracks with shared clusters / Total tracks", fontsize=14)
         ax.set_xticks(x_pos)
-        ax.set_xticklabels(plot_labels, rotation=45, ha="right")
+        ax.set_xticklabels(plot_labels, rotation=90, ha="right")
         
         ax.set_ylim(5e-6, 2.0) 
         ax.legend(fontsize=14)
@@ -850,7 +850,7 @@ class SharedClustersAnalyzer:
             # efficiencies = np.divide(counts, safe_total, out=np.zeros_like(counts, dtype=float), where=total_counts != 0)
 
             current_tops = bottoms + efficiencies
-            color = f"C{i+2}"
+            color = f"C{3-i}"
 
             ax.errorbar(
                 x_pos, current_tops, 
@@ -869,14 +869,14 @@ class SharedClustersAnalyzer:
                         ha='center', va='bottom', fontsize=8, color=color
                     )
 
-        ax.set_xlabel("Origin")
-        ax.set_ylabel("Tracks with shared clusters / Total tracks")
+        ax.set_xlabel("Origin", fontsize=14)
+        ax.set_ylabel("Tracks with shared clusters / Total tracks", fontsize=14)
         ax.set_xticks(x_pos)
-        ax.set_xticklabels(plot_labels, rotation=45, ha="right")
+        ax.set_xticklabels(plot_labels, rotation=90, ha="right")
         
         ax.set_ylim(5e-6, 2.0) 
-        ax.legend()
-        ax.tick_params(axis='both', labelsize=12)
+        ax.legend(fontsize=14)
+        ax.tick_params(axis='both', labelsize=13)
         ax.grid(True, which="both", ls="--", linewidth=0.5)
 
         plt.tight_layout()
@@ -993,7 +993,7 @@ class SharedClustersAnalyzer:
         ax_ratio.set_ylim(0, 4)
         ax_ratio.legend()
         ax_ratio.grid(True, which="both", ls="--", alpha=0.5)
-        ax_ratio.set_xticklabels(plot_labels, rotation=45, ha="right")
+        ax_ratio.set_xticklabels(plot_labels, rotation=90, ha="right")
 
         ax.set_ylim(5e-6, 2.0) 
         ax.legend()
@@ -1078,7 +1078,7 @@ class SharedClustersAnalyzer:
         ax_ratio.set_ylim(0, 4)
         ax_ratio.legend()
         ax_ratio.grid(True, which="both", ls="--", alpha=0.5)
-        ax_ratio.set_xticklabels(plot_labels, rotation=45, ha="right")
+        ax_ratio.set_xticklabels(plot_labels, rotation=90, ha="right")
         
         ax.set_ylim(5e-6, 2.0) 
         ax.legend()
