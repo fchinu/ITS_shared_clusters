@@ -22,6 +22,7 @@ class Runner():
         self.is_pp = kwargs["is_pp"]
         self.low_field = kwargs["low_field"]
         self.start_from = kwargs["start_from"]
+        self.run_only = kwargs["run_only"]
         self.rerun_failed = kwargs["rerun_failed"]
         self.run_iterations = kwargs["run_iterations"]
 
@@ -90,7 +91,18 @@ class Runner():
         stages = ["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"]
         start_idx = stages.index(self.start_from) if not self.rerun_failed else 0
 
+        target_stage = self.run_only or self.start_from
+        target_idx = stages.index(target_stage) if target_stage else 0
+        
+        # Helper to determine if a stage should execute
+        def should_run(stage_name):
+            current_idx = stages.index(stage_name)
+            if self.run_only:
+                return current_idx == target_idx
+            return current_idx >= target_idx
+
         iterations_to_run = self.run_iterations if self.run_iterations is not None else range(self.iterations)
+
         for i in iterations_to_run:
             rerun_from = None
             if self.rerun_failed:
@@ -109,26 +121,32 @@ class Runner():
                         continue
 
             try:
-                if start_idx <= 0:
+                if should_run("sim"):
                     self.run_simulation(i, self.start_splitid + i, rerun_from=rerun_from)
-                if start_idx <= 1:
+                
+                if should_run("copy"):
                     self.copy_simulations(self.w_shared_cl_dir, i)
                     self.copy_simulations(self.delta_rof_dir, i)
                     self.copy_simulations(self.w_shared_cl_delta_rof_dir, i)
-                if start_idx <= 2:
+                
+                if should_run("reco_shared"):
                     self.run_its_reco(i, shared_cl=True, delta_rof=False)
                     self.run_its_reco(i, shared_cl=False, delta_rof=True)
                     self.run_its_reco(i, shared_cl=True, delta_rof=True)
-                if start_idx <= 3:
+                
+                if should_run("tracksel"):
                     self.extend_with_track_selection(i)
-                if start_idx <= 4:
-                    self.run_checktracksca(i)  # TODO: parallelize
+                
+                if should_run("check"):
+                    self.run_checktracksca(i)
+
             except Exception as e:
                 self.logger.error(f"An error occurred in iteration {i}: {e}")
 
-        if start_idx <= 5:
+        if should_run("preprocess"):
             self.preprocess()
-        if start_idx <= 6:
+            
+        if should_run("analysis"):
             self.draw_shared()
 
     def _get_all_tf_dirs(self, base_directory: Path):
@@ -571,6 +589,10 @@ if __name__ == "__main__":
                         choices=["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"],
                         default="reco_shared",
                         help="Stage to start from: sim, copy, reco_shared, tracksel, check, preprocess, or analysis")
+    parser.add_argument("--run-only", type=str,
+                        choices=["sim", "copy", "reco_shared", "tracksel", "check", "preprocess", "analysis"],
+                        default=None,
+                        help="Stage to run only: sim, copy, reco_shared, tracksel, check, preprocess, or analysis. If set, overrides --start-from.")
     parser.add_argument("--rerun-failed", action="store_true",
                         help="Rerun only failed stages. If set, overrides --start-from to 'sim'.")
     parser.add_argument("--run-iterations", nargs="+", type=int, default=None,
@@ -588,6 +610,7 @@ if __name__ == "__main__":
         is_pp=args.is_pp,
         low_field=args.low_field,
         start_from=args.start_from,
+        run_only=args.run_only,
         rerun_failed=args.rerun_failed,
         run_iterations=args.run_iterations
     )
